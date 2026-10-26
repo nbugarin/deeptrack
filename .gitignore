@@ -1,0 +1,18 @@
+# build output
+*.so
+*.o
+*.engine
+__pycache__/
+*.pyc
+
+# models, data and results are not distributed
+*.pt
+*.pth
+*.onnx
+*.mp4
+*.avi
+*.jpg
+*.png
+gt.txt
+log_*.json
+scpilot/

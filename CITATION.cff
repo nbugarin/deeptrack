@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the article."
+title: "Class-tolerant association with confidence-gated probation for vessel tracking in NVIDIA DeepStream"
+license: MIT
+authors:
+  - family-names: Bugarin
+    given-names: Nediljko
+  - family-names: Miličević
+    given-names: Mario
+  - family-names: Marin
+    given-names: Ivana
+  - family-names: Gotovac
+    given-names: Sven
+preferred-citation:
+  type: article
+  title: "Class-Tolerant Association With Confidence-Gated Probation for Vessel Tracking in NVIDIA DeepStream"
+  authors:
+    - family-names: Bugarin
+      given-names: Nediljko
+    - family-names: Miličević
+      given-names: Mario
+    - family-names: Marin
+      given-names: Ivana
+    - family-names: Gotovac
+      given-names: Sven
+  journal: "IEEE Access"
+  year: 2026
+  notes: "Submitted"

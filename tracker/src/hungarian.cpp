@@ -1,5 +1,5 @@
-// Hungarian / Jonker-Volgenant, O(n^3) verzija s potencijalima.
-// Radi na pravokutnoj matrici; nedostajuce se popunjava velikom cijenom.
+// Hungarian / Jonker-Volgenant, O(n^3) version with potentials.
+// Works on a rectangular matrix; the missing entries are filled with a large cost.
 #include "hungarian.h"
 #include <limits>
 #include <algorithm>

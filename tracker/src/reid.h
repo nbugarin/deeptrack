@@ -4,14 +4,14 @@
 #include <string>
 #include <cstdint>
 
-// Omotac oko OSNet TensorRT enginea.
-// Ulaz:  N x 3 x 256 x 128, vec normaliziran, NCHW, RGB
-// Izlaz: N x 512, L2 normaliziran
+// Wrapper around the OSNet TensorRT engine.
+// Input:  N x 3 x 256 x 128, already normalised, NCHW, RGB
+// Output: N x 512, L2-normalised
 class ReID {
 public:
     bool  init(const std::string &enginePath, int maxBatch = 16);
     void  deinit();
-    // vraca false ako inference ne uspije
+    // returns false if inference fails
     bool  infer(const float *inputNCHW, int n, float *outFeat);
     int   featSize() const { return featSize_; }
     bool  ready()    const { return ready_; }

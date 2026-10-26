@@ -22,27 +22,27 @@ bool ReID::init(const std::string &enginePath, int maxBatch)
     maxBatch_ = maxBatch;
 
     std::ifstream f(enginePath, std::ios::binary);
-    if (!f.good()) { printf("[reid] ne mogu otvoriti %s\n", enginePath.c_str()); return false; }
+    if (!f.good()) { printf("[reid] cannot open %s\n", enginePath.c_str()); return false; }
     f.seekg(0, std::ios::end);
     size_t sz = f.tellg();
     f.seekg(0, std::ios::beg);
     std::vector<char> blob(sz);
     f.read(blob.data(), sz);
     f.close();
-    printf("[reid] engine %zu bajtova\n", sz);
+    printf("[reid] engine %zu bytes\n", sz);
 
     IRuntime *rt = createInferRuntime(gLogger);
-    if (!rt) { printf("[reid] createInferRuntime pao\n"); return false; }
+    if (!rt) { printf("[reid] createInferRuntime failed\n"); return false; }
     ICudaEngine *eng = rt->deserializeCudaEngine(blob.data(), sz);
-    if (!eng) { printf("[reid] deserializeCudaEngine pao\n"); return false; }
+    if (!eng) { printf("[reid] deserializeCudaEngine failed\n"); return false; }
     IExecutionContext *ctx = eng->createExecutionContext();
-    if (!ctx) { printf("[reid] createExecutionContext pao\n"); return false; }
+    if (!ctx) { printf("[reid] createExecutionContext failed\n"); return false; }
 
     runtime_ = rt; engine_ = eng; context_ = ctx;
 
-    // ispisi sve tenzore, da vidimo imena i oblike
+    // print all tensors, to see the names and shapes
     int nb = eng->getNbIOTensors();
-    printf("[reid] tenzora: %d\n", nb);
+    printf("[reid] tensors: %d\n", nb);
     for (int i = 0; i < nb; i++) {
         const char *nm = eng->getIOTensorName(i);
         Dims d = eng->getTensorShape(nm);
@@ -56,8 +56,8 @@ bool ReID::init(const std::string &enginePath, int maxBatch)
 
     size_t inBytes  = (size_t)maxBatch_ * 3 * 256 * 128 * sizeof(float);
     size_t outBytes = (size_t)maxBatch_ * featSize_ * sizeof(float);
-    if (cudaMalloc(&dIn_,  inBytes)  != cudaSuccess) { printf("[reid] cudaMalloc in pao\n");  return false; }
-    if (cudaMalloc(&dOut_, outBytes) != cudaSuccess) { printf("[reid] cudaMalloc out pao\n"); return false; }
+    if (cudaMalloc(&dIn_,  inBytes)  != cudaSuccess) { printf("[reid] cudaMalloc in failed\n");  return false; }
+    if (cudaMalloc(&dOut_, outBytes) != cudaSuccess) { printf("[reid] cudaMalloc out failed\n"); return false; }
     cudaStream_t st;
     cudaStreamCreate(&st);
     stream_ = st;
@@ -83,7 +83,7 @@ bool ReID::infer(const float *inputNCHW, int n, float *outFeat)
     if (cudaMemcpyAsync(dIn_, inputNCHW, inBytes, cudaMemcpyHostToDevice, st) != cudaSuccess)
         return false;
 
-    // postavi oblike i adrese
+    // set the shapes and addresses
     int nb = eng->getNbIOTensors();
     for (int i = 0; i < nb; i++) {
         const char *nm = eng->getIOTensorName(i);
@@ -102,7 +102,7 @@ bool ReID::infer(const float *inputNCHW, int n, float *outFeat)
         return false;
     cudaStreamSynchronize(st);
 
-    // L2 normalizacija
+    // L2 normalisation
     for (int i = 0; i < n; i++) {
         float *v = outFeat + (size_t)i * featSize_;
         double s = 0.0;

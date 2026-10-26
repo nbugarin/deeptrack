@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""p62 -- PROVJERA SMD-Plus (Singapore Maritime Dataset Plus): format anotacija, ima li ID-ova tragova, videi.
+"""p62 -- CHECK OF SMD-Plus (Singapore Maritime Dataset Plus): annotation format, whether track IDs exist, videos.
 
-Samo cita; nista ne pokrece na GPU-u i nista ne mijenja.
- 1) popis videa i .mat datoteka (ObjectGT), uparivanje po imenu, rezolucija / fps / broj frejmova
- 2) struktura jedne .mat datoteke: varijable, polja, prvih nekoliko frejmova -- ima li polje s ID-om
- 3) za sve snimke: frejmova s anotacijom, objekata po frejmu, klase
- 4) ako nema ID-a: moze li se ID izvesti automatski -- je li isti redni broj objekta u susjednim frejmovima isti brod
-    (redoslijed), koliko je parova jednoznacno (IoU >= 0,5, drugi kandidat < 0,3), koliko dvosmislenih
+Read only; runs nothing on the GPU and changes nothing.
+ 1) list of videos and .mat files (ObjectGT), matching by name, resolution / fps / number of frames
+ 2) structure of one .mat file: variables, fields, first few frames -- is there a field with an ID
+ 3) for all clips: annotated frames, objects per frame, classes
+ 4) if there is no ID: can an ID be derived automatically -- is the same object index in neighbouring frames the same vessel
+    (order), how many pairs are unambiguous (IoU >= 0.5, second candidate < 0.3), how many ambiguous
 
-Pokretanje:  python3 /workspace/p62_smd_provjera.py /workspace/SMD_Plus/VIS_Onshore
-             (zadaj mapu koja sadrzi videe i ObjectGT; trazi i u podmapama)
-Izlaz:       /workspace/scpilot/p62_smd_provjera.txt
+Run:     python3 /workspace/p62_smd_provjera.py /workspace/SMD_Plus/VIS_Onshore
+         (give the folder that contains the videos and ObjectGT; subfolders are searched too)
+Output:  /workspace/scpilot/p62_smd_provjera.txt
 """
 import os, sys, glob, re, collections
 import numpy as np
@@ -28,14 +28,14 @@ try:
 except ImportError:
     cv2 = None
 
-if not os.path.isdir(ROOT): sys.exit('nema mape %s -- zadaj put do raspakirane mape (npr. .../VIS_Onshore)' % ROOT)
+if not os.path.isdir(ROOT): sys.exit('no folder %s -- give the path to the extracted folder (e.g. .../VIS_Onshore)' % ROOT)
 vid = sorted(p for e in ('avi', 'mp4', 'mov', 'AVI', 'MP4', 'MOV') for p in glob.glob(ROOT + '/**/*.' + e, recursive=True))
 mats = sorted(glob.glob(ROOT + '/**/*.mat', recursive=True))
-P('p62 SMD-Plus provjera -- %s' % ROOT)
-P('videa: %d, .mat datoteka: %d' % (len(vid), len(mats)))
-for p in mats[:5]: P('  primjer .mat: %s' % os.path.relpath(p, ROOT))
-for p in vid[:3]: P('  primjer videa: %s' % os.path.relpath(p, ROOT))
-if not mats: sys.exit('nema .mat datoteka')
+P('p62 SMD-Plus check -- %s' % ROOT)
+P('videos: %d, .mat files: %d' % (len(vid), len(mats)))
+for p in mats[:5]: P('  example .mat: %s' % os.path.relpath(p, ROOT))
+for p in vid[:3]: P('  example video: %s' % os.path.relpath(p, ROOT))
+if not mats: sys.exit('no .mat files')
 
 def kljuc(p):                                            # MVI_1448_VIS_ObjectGT.mat -> MVI_1448_VIS
     b = os.path.splitext(os.path.basename(p))[0]
@@ -43,9 +43,9 @@ def kljuc(p):                                            # MVI_1448_VIS_ObjectGT
 VK = {kljuc(v): v for v in vid}
 PAR = [(kljuc(m), m, VK.get(kljuc(m))) for m in mats]
 bez = [k for k, _, v in PAR if v is None]
-P('uparenih .mat + video: %d%s' % (len(PAR) - len(bez), ('; bez videa: ' + ', '.join(bez[:8])) if bez else ''))
+P('matched .mat + video: %d%s' % (len(PAR) - len(bez), ('; without video: ' + ', '.join(bez[:8])) if bez else ''))
 
-# ----------------------------------------------------------------------------- ucitavanje .mat (v5 ili v7.3)
+# ----------------------------------------------------------------------------- loading .mat (v5 or v7.3)
 def ucitaj_mat(p):
     try:
         import scipy.io as sio
@@ -60,34 +60,34 @@ def opis(v, n=200):
     if isinstance(v, np.ndarray): return 'ndarray%s %s: %s' % (v.shape, v.dtype, np.array2string(v.ravel()[:12], max_line_width=n))
     return '%s: %s' % (type(v).__name__, str(v)[:n])
 
-# ----------------------------------------------------------------------------- 2. struktura prve datoteke
-P(); P('=== 2. STRUKTURA: %s' % os.path.basename(PAR[0][1]))
+# ----------------------------------------------------------------------------- 2. structure of the first file
+P(); P('=== 2. STRUCTURE: %s' % os.path.basename(PAR[0][1]))
 ver, D = ucitaj_mat(PAR[0][1])
 P('format MATLAB %s' % ver)
 if ver == 'v7.3':
     def obidi(g, pref=''):
         for k in g:
-            o = g[k]; P('  %s%s: %s' % (pref, k, ('grupa' if not hasattr(o, 'shape') else 'skup %s %s' % (o.shape, o.dtype))))
+            o = g[k]; P('  %s%s: %s' % (pref, k, ('group' if not hasattr(o, 'shape') else 'set %s %s' % (o.shape, o.dtype))))
             if not hasattr(o, 'shape'): obidi(o, pref + k + '/')
-    obidi(D); P('!! v7.3 format -- posalji ovaj ispis Claudeu (treba prilagoditi citanje)'); sys.exit(0)
+    obidi(D); P('!! v7.3 format -- send this output to Claude (reading must be adapted)'); sys.exit(0)
 GLAVNA = None
 for k, v in D.items():
-    P('  varijabla %s: %s' % (k, type(v).__name__ if not isinstance(v, np.ndarray) else 'ndarray%s %s' % (v.shape, v.dtype)))
+    P('  variable %s: %s' % (k, type(v).__name__ if not isinstance(v, np.ndarray) else 'ndarray%s %s' % (v.shape, v.dtype)))
     el = v.ravel()[0] if isinstance(v, np.ndarray) and v.dtype == object and v.size else v
     if polja(el):
-        P('    polja: %s' % polja(el))
+        P('    fields: %s' % polja(el))
         if isinstance(v, np.ndarray) and (GLAVNA is None or v.size > D[GLAVNA].size): GLAVNA = k
-if GLAVNA is None: P('!! nisam nasao niz struktura po frejmovima -- posalji ovaj ispis Claudeu'); sys.exit(0)
+if GLAVNA is None: P('!! no array of per-frame structures found -- send this output to Claude'); sys.exit(0)
 S = D[GLAVNA].ravel(); F = polja(S[0])
-P('glavna varijabla: %s (%d elemenata = frejmova?), polja %s' % (GLAVNA, S.size, F))
+P('main variable: %s (%d elements = frames?), fields %s' % (GLAVNA, S.size, F))
 for i in range(min(3, S.size)):
     P('  element %d:' % i)
     for f in F: P('    %-10s %s' % (f, opis(getattr(S[i], f))))
 IDP = [f for f in F if re.search(r'id|track|trag|label_?id', f, re.I)]
 BBP = [f for f in F if re.search(r'^bb$|bbox|box', f, re.I)]
 KLP = [f for f in F if re.search(r'object|class|cls', f, re.I)]
-P('polje s ID-om: %s | okviri: %s | klasa: %s' % (IDP or 'NEMA', BBP or '?', KLP or '?'))
-if not BBP: P('!! ne prepoznajem polje s okvirima -- posalji ovaj ispis Claudeu'); sys.exit(0)
+P('field with ID: %s | boxes: %s | class: %s' % (IDP or 'NONE', BBP or '?', KLP or '?'))
+if not BBP: P('!! field with boxes not recognised -- send this output to Claude'); sys.exit(0)
 
 def okviri(e):
     b = np.asarray(getattr(e, BBP[0]), dtype=float)
@@ -102,15 +102,15 @@ def iou(a, b):
     i = max(0.0, x2 - x1) * max(0.0, y2 - y1); u = a[2] * a[3] + b[2] * b[3] - i
     return i / u if u > 0 else 0.0
 
-# ----------------------------------------------------------------------------- 3. + 4. sve snimke
-P(); P('=== 3./4. SVE SNIMKE (video: rezolucija, fps, frejmova | GT: frejmova, objekata/frejm | ID iz redoslijeda | jednoznacni parovi)')
-P('  %-18s %-24s %7s %6s %8s %9s %9s' % ('snimka', 'video', 'GT frm', 'obj/f', 'max obj', 'redosl.', 'jednozn.'))
+# ----------------------------------------------------------------------------- 3. + 4. all clips
+P(); P('=== 3./4. ALL CLIPS (video: resolution, fps, frames | GT: frames, objects/frame | ID from order | unambiguous pairs)')
+P('  %-18s %-24s %7s %6s %8s %9s %9s' % ('sequence', 'video', 'GT frm', 'obj/f', 'max obj', 'order', 'unamb.'))
 KL = collections.Counter(); uk = collections.Counter(); xmax = 0; ymax = 0
 for k, m, v in PAR:
     try:
         ver, D = ucitaj_mat(m); S = D[GLAVNA].ravel()
     except Exception as ex:
-        P('  %-18s !! nije ucitan: %s' % (k, str(ex)[:80])); continue
+        P('  %-18s !! not loaded: %s' % (k, str(ex)[:80])); continue
     vo = '-'
     if v and cv2 is not None:
         c = cv2.VideoCapture(v); vo = '%dx%d %.1ffps %d' % (c.get(3), c.get(4), c.get(cv2.CAP_PROP_FPS), c.get(cv2.CAP_PROP_FRAME_COUNT)); c.release()
@@ -130,11 +130,11 @@ for k, m, v in PAR:
     P('  %-18s %-24s %7d %6.1f %8d %8.1f%% %8.1f%%' % (k[:18], vo, len(S), np.mean(nobj) if nobj else 0, max(nobj) if nobj else 0,
       100.0 * red[0] / max(1, red[1]), 100.0 * jed[0] / max(1, jed[1])))
 P()
-P('UKUPNO: %d snimki, %d anotiranih frejmova, %d okvira; najveci x+w %.0f, y+h %.0f' % (len(PAR), uk['frm'], uk['obj'], xmax, ymax))
-P('klase: ' + ', '.join('%s: %d' % (c, n) for c, n in KL.most_common()))
-P('isti redni broj objekta = isti brod u susjednom frejmu: %.1f %% parova' % (100.0 * uk['red0'] / max(1, uk['red1'])))
-P('jednoznacno povezivanje po preklapanju (IoU >= 0,5, drugi < 0,3): %.1f %% parova' % (100.0 * uk['jed0'] / max(1, uk['jed1'])))
+P('TOTAL: %d clips, %d annotated frames, %d boxes; largest x+w %.0f, y+h %.0f' % (len(PAR), uk['frm'], uk['obj'], xmax, ymax))
+P('classes: ' + ', '.join('%s: %d' % (c, n) for c, n in KL.most_common()))
+P('same object index = same vessel in the neighbouring frame: %.1f %% of pairs' % (100.0 * uk['red0'] / max(1, uk['red1'])))
+P('unambiguous linking by overlap (IoU >= 0.5, second < 0.3): %.1f %% of pairs' % (100.0 * uk['jed0'] / max(1, uk['jed1'])))
 P()
-P('Tumacenje: ako postoji polje s ID-om -> skup je spreman za ocjenu praćenja. Ako ga nema, a redoslijed je ~100 %,')
-P('ID je zapravo redni broj objekta. Ako ni to, ID se izvodi povezivanjem po preklapanju (uz navedeno ogranicenje).')
-P('Rezultat: %s' % OUT)
+P('Interpretation: if there is a field with an ID -> the set is ready for tracking evaluation. If not, and the order is ~100 %,')
+P('the ID is in fact the object index. If not even that, the ID is derived by linking by overlap (with the stated limitation).')
+P('Result: %s' % OUT)

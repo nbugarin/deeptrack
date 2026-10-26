@@ -5,22 +5,22 @@
 
 struct CropRect { int x, y, w, h; };
 
-// Izrezuje pravokutnike iz jednog frejma GPU surfacea, skalira na 256x128 RGB,
-// normalizira i slaze u NCHW float buffer spreman za OSNet.
-// Normalizacija je ista kao u config_tracker_maritime.yml:
+// Crops rectangles from one frame of the GPU surface, scales them to 256x128 RGB,
+// normalises them and packs them into an NCHW float buffer ready for OSNet.
+// The normalisation is the same as in config_tracker_maritime.yml:
 //   offsets [123.675, 116.280, 103.530], netScaleFactor 0.01735207
 class CropExtractor {
 public:
     bool init(int maxBatch = 16, int gpuId = 0);
     void deinit();
-    // out mora imati mjesta za n*3*256*128 float
-    // vraca broj stvarno obradenih isjecaka
-    // srcParams je frame->bufferList[i] iz NvMOTFrame
+    // out must have room for n*3*256*128 floats
+    // returns the number of crops actually processed
+    // srcParams is frame->bufferList[i] from NvMOTFrame
     int  extract(NvBufSurfaceParams *srcParams, NvBufSurfaceMemType srcMem,
                  const std::vector<CropRect> &rects, float *out);
     bool ready() const { return ready_; }
 private:
-    NvBufSurface *dst_ = nullptr;   // batch RGBA 256x128 na GPU
+    NvBufSurface *dst_ = nullptr;   // RGBA 256x128 batch on the GPU
     int   maxBatch_ = 16;
     int   gpuId_ = 0;
     bool  ready_ = false;

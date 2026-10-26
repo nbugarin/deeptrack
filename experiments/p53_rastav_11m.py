@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""p53: RASTAV I OSJETLJIVOST KONACNE VARIJANTE VLASTITOG TRACKERA -- YOLO11m, 16 SSMOT snimaka (za IEEE, samo SSMOT)
+"""p53: DECOMPOSITION AND SENSITIVITY OF THE FINAL VARIANT OF OUR TRACKER -- YOLO11m, 16 SSMOT sequences (for IEEE, SSMOT only)
 
-Plan zapisan PRIJE pokretanja (projekt: claude/p53_rastav_11m_plan.md). Sve je opisno; nista se ne bira na ovim rezultatima.
-Varijante (sve s YOLO11m, config_infer_11m.txt iz p44):
-  cls    samo kazna za klasu   = polazna + classGate 0, classPenalty 0.5
-  prob   samo probacija        = polazna + confHigh 0.8, maxAgeSec 3.3333, minHitsSec 0.6667 (tvrdi uvjet klase ostaje)
-         (cls + prob = tocno konacna varijanta; provjerava se u kodu)
-  l02    konacna s classPenalty 0.2       l03  konacna s classPenalty 0.3       c07  konacna s confHigh 0.7
-  base_t, final_t   polazna i konacna PONOVNO, s mjerenjem vremena -> moraju biti identicne log_p52_* (provjera ponovljivosti) i daju brzinu
-Zastite kao p52: track.h -> track.h.bak_p53 (uvijek se vraca i prevodi), engine-i -> .p53bak (provjera nakon svakog pokretanja).
-Pokretanje (GPU slobodan):   nohup python3 /workspace/p53_rastav_11m.py > /workspace/p53_out.txt 2>&1 &
-Pracenje:                    tail -3 /workspace/p53_out.txt
-Samo ocjena:                 python3 /workspace/p53_rastav_11m.py --eval
-Ako je prekinuto:            python3 /workspace/p53_rastav_11m.py --vrati   (pa ponovno pokreni -- nastavlja)
-Izlaz: /workspace/scpilot/p53_rastav_11m.txt (+ scpilot/p53/p53_sve.json)
+Plan written BEFORE the run (project: claude/p53_rastav_11m_plan.md). Everything is descriptive; nothing is selected on these results.
+Variants (all with YOLO11m, config_infer_11m.txt from p44):
+  cls    class penalty only   = baseline + classGate 0, classPenalty 0.5
+  prob   probation only       = baseline + confHigh 0.8, maxAgeSec 3.3333, minHitsSec 0.6667 (the hard class condition stays)
+         (cls + prob = exactly the final variant; checked in the code)
+  l02    final with classPenalty 0.2       l03  final with classPenalty 0.3       c07  final with confHigh 0.7
+  base_t, final_t   baseline and final AGAIN, with timing -> must be identical to log_p52_* (reproducibility check) and give the speed
+Protections as in p52: track.h -> track.h.bak_p53 (always restored and compiled), engines -> .p53bak (checked after every run).
+Run (GPU free):           nohup python3 /workspace/p53_rastav_11m.py > /workspace/p53_out.txt 2>&1 &
+Monitoring:               tail -3 /workspace/p53_out.txt
+Evaluation only:          python3 /workspace/p53_rastav_11m.py --eval
+If interrupted:           python3 /workspace/p53_rastav_11m.py --vrati   (then rerun -- it resumes)
+Output: /workspace/scpilot/p53_rastav_11m.txt (+ scpilot/p53/p53_sve.json)
 """
 import os, re, sys, json, time, shutil, hashlib, subprocess
 import numpy as np
@@ -30,19 +30,19 @@ VID=W+'/SSMOT_video/video/SSMOT_%d.mp4'; GT=W+'/SSMOT_video/ground-truth/SSMOT_%
 BASE={'maxAge':100,'wMeas':0.15,'galleryMax':5,'wReid':0.8,'maxCost':0.75,'inertia':0.10,'detNms':0.70,'minHits':20}
 EXTRA_BASE={'reidAfterN':0}
 OFF={'classGate':lambda v: v==1,'confHigh':lambda v: v>1,'maxAgeSec':lambda v: v<=0,'minHitsSec':lambda v: v<=0}
-FINAL={'classGate':0,'classPenalty':0.5,'confHigh':0.8,'maxAgeSec':3.3333,'minHitsSec':0.6667}   # tocno kao p43/p52 "konacna"
+FINAL={'classGate':0,'classPenalty':0.5,'confHigh':0.8,'maxAgeSec':3.3333,'minHitsSec':0.6667}   # exactly as the p43/p52 "final"
 CLS={'classGate':0,'classPenalty':0.5}; PROB={'confHigh':0.8,'maxAgeSec':3.3333,'minHitsSec':0.6667}
 assert dict(CLS,**PROB)==FINAL and not set(CLS)&set(PROB)
-VARS=[('base_t',{},'polazna (ponovno, s vremenom)'),('cls',CLS,'samo kazna za klasu'),('prob',PROB,'samo probacija'),
-      ('final_t',FINAL,'konacna (ponovno, s vremenom)'),('l02',dict(FINAL,classPenalty=0.2),'konacna, kazna za klasu 0,2'),
-      ('l03',dict(FINAL,classPenalty=0.3),'konacna, kazna za klasu 0,3'),('c07',dict(FINAL,confHigh=0.7),'konacna, prag pouzdanosti 0,7')]
+VARS=[('base_t',{},'baseline (again, with timing)'),('cls',CLS,'class penalty only'),('prob',PROB,'probation only'),
+      ('final_t',FINAL,'final (again, with timing)'),('l02',dict(FINAL,classPenalty=0.2),'final, class penalty 0.2'),
+      ('l03',dict(FINAL,classPenalty=0.3),'final, class penalty 0.3'),('c07',dict(FINAL,confHigh=0.7),'final, confidence threshold 0.7')]
 VN={v:n for v,_,n in VARS}; VC={v:c for v,c,_ in VARS}
 def outp(v,s): return (RE+'/%s_%d.json'%(v[:-2],s)) if v.endswith('_t') else W+'/log_p53_%s_ss_%d.json'%(v,s)
 P52=W+'/log_p52_%s_ss_%d.json'
 LOCKS=[S+'/p43.lock',S+'/p27.lock']+[S+'/p%d/p%d.lock'%(i,i) for i in (44,45,46,47,48,52)]
 T_RUN=900
 REINSTALL=('apt-get update && apt-get install -y libeigen3-dev && pip install --no-deps git+https://github.com/JonathonLuiten/TrackEval.git '
-           '&& python3 -c "import scipy, cv2, trackeval; print(\'SVE OK\')"')
+           '&& python3 -c "import scipy, cv2, trackeval; print(\'ALL OK\')"')
 L=[]
 def P(x=''): print(x,flush=True); L.append(x)
 def sha(p):
@@ -76,7 +76,7 @@ def fps(path):
         if f and f>0: return float(f)
     except Exception: pass
     return 25.0
-# ======================================================================= track.h (isto kao p43/p52)
+# ======================================================================= track.h (same as p43/p52)
 RX=lambda n: re.compile(r'^(\s*(int|float|double|bool)\s+'+re.escape(n)+r'\s*=\s*)([^;]+)(;)',re.M)
 def getv(txt,n):
     m=list(RX(n).finditer(txt))
@@ -92,72 +92,72 @@ def check_base(txt):
     bad=[]
     for n,v in list(BASE.items())+list(EXTRA_BASE.items()):
         ty,x=getv(txt,n)
-        if x is None: bad.append('%s nije nadjen tocno jednom'%n)
-        elif abs(x-v)>1e-6: bad.append('%s = %g (treba %g)'%(n,x,v))
+        if x is None: bad.append('%s not found exactly once'%n)
+        elif abs(x-v)>1e-6: bad.append('%s = %g (should be %g)'%(n,x,v))
     for n,okf in OFF.items():
         ty,x=getv(txt,n)
-        if x is not None and not okf(x): bad.append('%s = %g (treba biti iskljuceno)'%(n,x))
+        if x is not None and not okf(x): bad.append('%s = %g (should be switched off)'%(n,x))
     for n in FINAL:
-        if getv(txt,n)[1] is None: bad.append('%s (konacna varijanta) nije nadjen tocno jednom'%n)
+        if getv(txt,n)[1] is None: bad.append('%s (final variant) not found exactly once'%n)
     return bad
 def build():
     t0=time.time()
     r=subprocess.run('cd %s/mytracker && make clean >/dev/null 2>&1; make 2>&1'%W,shell=True,capture_output=True,text=True)
     if r.returncode!=0 or not os.path.exists(LIB) or os.path.getmtime(LIB)<t0-2:
-        raise RuntimeError('prevodenje nije uspjelo:\n'+(r.stdout or '')[-1500:]+(r.stderr or '')[-1500:])
+        raise RuntimeError('compilation failed:\n'+(r.stdout or '')[-1500:]+(r.stderr or '')[-1500:])
 def vrati():
     if os.path.exists(BAK):
         shutil.copy(BAK,SRC)
         try: build()
-        except Exception as e: print('!! prevodenje polaznog track.h nije uspjelo: %s'%e,flush=True)
+        except Exception as e: print('!! compilation of the baseline track.h failed: %s'%e,flush=True)
         if open(SRC).read()==open(BAK).read(): os.remove(BAK)
-        print('   track.h vracen na polaznu konfiguraciju i preveden.',flush=True)
+        print('   track.h restored to the baseline configuration and compiled.',flush=True)
     for p in PROT0:
         b=p+'.p53bak'
         if not os.path.exists(b): continue
-        if os.path.exists(p) and sha(p)==sha(b): os.remove(b); print('   %s: netaknut, kopija obrisana'%os.path.basename(p),flush=True)
+        if os.path.exists(p) and sha(p)==sha(b): os.remove(b); print('   %s: untouched, copy deleted'%os.path.basename(p),flush=True)
         else:
             if os.path.exists(p): os.replace(p,p+'.p53_nepoznat')
-            os.replace(b,p); print('   %s: VRACEN iz sigurnosne kopije'%os.path.basename(p),flush=True)
+            os.replace(b,p); print('   %s: RESTORED from the backup copy'%os.path.basename(p),flush=True)
 # ======================================================================= GPU
 def runs():
     try:
         import scipy, trackeval, cv2   # noqa: F401
-    except Exception as e: sys.exit('!! nedostaje paket (%s). Kontejner je vjerojatno ponovno pokrenut -- prvo pokreni:\n   %s'%(e,REINSTALL))
+    except Exception as e: sys.exit('!! missing package (%s). The container was probably restarted -- first run:\n   %s'%(e,REINSTALL))
     os.makedirs(RE,exist_ok=True)
-    if alive(LOCK): sys.exit('!! p53 vec radi (PID %s) -- ne pokreci dvaput.'%alive(LOCK))
+    if alive(LOCK): sys.exit('!! p53 is already running (PID %s) -- do not run twice.'%alive(LOCK))
     for lk in LOCKS:
-        if alive(lk): sys.exit('!! %s jos radi (PID %s) -- pokreni p53 kad zavrsi.'%(os.path.basename(lk).split('.')[0],alive(lk)))
+        if alive(lk): sys.exit('!! %s is still running (PID %s) -- run p53 when it finishes.'%(os.path.basename(lk).split('.')[0],alive(lk)))
     if os.environ.get('P53_NOGPU')!='1':
         try:
             used=int(subprocess.run(['nvidia-smi','--query-gpu=memory.used','--format=csv,noheader,nounits'],capture_output=True,text=True).stdout.split()[0])
-            print('GPU memorija u upotrebi: %d MiB'%used,flush=True)
-            if used>1500: sys.exit('GPU je zauzet (>1500 MiB) -- nesto drugo radi na GPU-u. Pricekaj da zavrsi.')
-        except (IndexError,ValueError,FileNotFoundError): print('upozorenje: nvidia-smi nije dao podatak, nastavljam',flush=True)
-        if not os.path.isdir('/usr/include/eigen3'): sys.exit('!! nema Eigena. Prvo: apt-get install -y libeigen3-dev')
+            print('GPU memory in use: %d MiB'%used,flush=True)
+            if used>1500: sys.exit('GPU is busy (>1500 MiB) -- something else is running on the GPU. Wait until it finishes.')
+        except (IndexError,ValueError,FileNotFoundError): print('warning: nvidia-smi gave no data, continuing',flush=True)
+        if not os.path.isdir('/usr/include/eigen3'): sys.exit('!! no Eigen. First: apt-get install -y libeigen3-dev')
     if os.path.exists(BAK) or any(os.path.exists(p+'.p53bak') for p in PROT0):
-        print('prethodno pokretanje je prekinuto -- vracam track.h i provjeravam engine-e:',flush=True); vrati()
+        print('the previous run was interrupted -- restoring track.h and checking the engines:',flush=True); vrati()
     need=[PROBE,CFG,INFER,ENG11,SRC,W+'/id_smooth.py']+[VID%s for s in SS16]+[GT%s for s in SS16]+[P52%(v,s) for v in ('base','final') for s in SS16]
     miss=[p for p in need if not os.path.exists(p)]
-    if miss: sys.exit('!! nedostaje (p52 mora biti gotov):\n   '+'\n   '.join(miss))
-    if shutil.disk_usage(W).free/2**30<3: sys.exit('!! na disku je slobodno manje od 3 GB')
+    if miss: sys.exit('!! missing (p52 must be done):\n   '+'\n   '.join(miss))
+    if shutil.disk_usage(W).free/2**30<3: sys.exit('!! less than 3 GB free on the disk')
     orig=open(SRC).read(); bad=check_base(orig)
-    if bad: sys.exit('!! track.h NIJE na polaznoj konfiguraciji -- nista nije pokrenuto:\n   '+'\n   '.join(bad)+'\n   Posalji ovaj ispis Claudeu.')
-    print('track.h na polaznoj konfiguraciji (provjereno); minHitsHigh = %s (ne mijenja se)'%('%g'%getv(orig,'minHitsHigh')[1] if getv(orig,'minHitsHigh')[1] is not None else 'nema'),flush=True)
+    if bad: sys.exit('!! track.h is NOT at the baseline configuration -- nothing was run:\n   '+'\n   '.join(bad)+'\n   Send this output to Claude.')
+    print('track.h at the baseline configuration (checked); minHitsHigh = %s (not changed)'%('%g'%getv(orig,'minHitsHigh')[1] if getv(orig,'minHitsHigh')[1] is not None else 'none'),flush=True)
     st=stanje(); h_inf=sha(INFER)
-    if 'infer_sha' in st and st['infer_sha']!=h_inf: sys.exit('!! config_infer_11m.txt promijenjen od prvog pokretanja p53 -- javi Claudeu')
+    if 'infer_sha' in st and st['infer_sha']!=h_inf: sys.exit('!! config_infer_11m.txt changed since the first p53 run -- tell Claude')
     st['infer_sha']=h_inf; st.setdefault('vrijeme',{}); spremi(st)
     todo={v:[s for s in SS16 if not json_ok(outp(v,s))] for v,_,_ in VARS}
     n_all=sum(len(t) for t in todo.values())
-    print('pokretanja preostalo: %d (7 varijanti x 16 SSMOT snimaka)'%n_all,flush=True)
+    print('runs remaining: %d (7 variants x 16 SSMOT sequences)'%n_all,flush=True)
     PROT=[p for p in PROT0 if os.path.exists(p)]
-    print('zasticeni engine-i: %s'%', '.join(os.path.basename(p) for p in PROT),flush=True)
+    print('protected engines: %s'%', '.join(os.path.basename(p) for p in PROT),flush=True)
     shutil.copy2(SRC,BAK); open(LOCK,'w').write(str(os.getpid())); sh={}
     t0=time.time(); done=[0]
     try:
         for p in PROT:
             sh[p]=sha(p); shutil.copy2(p,p+'.p53bak')
-            if sha(p+'.p53bak')!=sh[p]: sys.exit('!! sigurnosna kopija %s nije ispravna -- STANI'%p)
+            if sha(p+'.p53bak')!=sh[p]: sys.exit('!! backup copy %s is not valid -- STOP'%p)
         def one(v,s):
             out=outp(v,s); st_={p:stat(p) for p in PROT}; env=dict(os.environ,MYTRACKER_FPS='%g'%fps(VID%s)); rc=None
             if os.path.exists(out): os.remove(out)
@@ -165,46 +165,46 @@ def runs():
             try:
                 r=subprocess.run(['python3',PROBE,VID%s,CFG,out,INFER],cwd=W,capture_output=True,text=True,env=env,timeout=T_RUN)
                 rc=r.returncode; err=(r.stdout or '')[-2500:]+'\n----\n'+(r.stderr or '')[-3500:]
-            except subprocess.TimeoutExpired: err='prekoraceno vrijeme (%d s)'%T_RUN
+            except subprocess.TimeoutExpired: err='time limit exceeded (%d s)'%T_RUN
             dt=time.time()-ta
             ch=[os.path.basename(p) for p in PROT if stat(p)!=st_[p]]
             if ch:
                 if os.path.exists(out): os.remove(out)
                 open(O+'/greska.txt','w').write(err)
-                sys.exit('!! promijenio se %s tijekom pokretanja (%s, SSMOT_%d) -- vraca se iz kopije; posalji Claudeu: tail -40 /workspace/scpilot/p53/greska.txt'%(', '.join(ch),v,s))
+                sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- restoring from the copy; send to Claude: tail -40 /workspace/scpilot/p53/greska.txt'%(', '.join(ch),v,s))
             if json_ok(out):
                 st['vrijeme']['%s|%d'%(v,s)]=[len(json.load(open(out))),dt]; spremi(st); return True
             if os.path.exists(out): os.remove(out)
-            open(O+'/greska.txt','w').write('%s SSMOT_%d, povratni kod %s\n'%(v,s,rc)+err); return False
+            open(O+'/greska.txt','w').write('%s SSMOT_%d, return code %s\n'%(v,s,rc)+err); return False
         for v,cfg,name in VARS:
             if not todo[v]: continue
             txt=orig
             for k,x in cfg.items(): txt=setv(txt,k,x)
             open(SRC,'w').write(txt); build()
-            print('%s: tracker preveden (%s)'%(name,', '.join('%s %g'%(k,x) for k,x in cfg.items()) or 'polazni track.h'),flush=True)
+            print('%s: tracker compiled (%s)'%(name,', '.join('%s %g'%(k,x) for k,x in cfg.items()) or 'baseline track.h'),flush=True)
             for s in todo[v]:
                 ok=one(v,s) or one(v,s)
-                if not ok: sys.exit('!! %s, SSMOT %d nije uspjelo ni u drugom pokusaju -- posalji Claudeu: tail -40 /workspace/scpilot/p53/greska.txt'%(name,s))
+                if not ok: sys.exit('!! %s, SSMOT %d failed in the second attempt too -- send to Claude: tail -40 /workspace/scpilot/p53/greska.txt'%(name,s))
                 done[0]+=1; el=time.time()-t0
-                print('  [%3d/%d] %-32s SSMOT %-2d ok   (jos oko %.0f min)'%(done[0],n_all,name,s,el/done[0]*(n_all-done[0])/60),flush=True)
+                print('  [%3d/%d] %-32s SSMOT %-2d ok   (about %.0f min left)'%(done[0],n_all,name,s,el/done[0]*(n_all-done[0])/60),flush=True)
     finally:
         shutil.copy(BAK,SRC)
         try: build(); okb=True
-        except Exception as e: okb=False; print('!! prevodenje polaznog track.h nije uspjelo: %s'%e,flush=True)
+        except Exception as e: okb=False; print('!! compilation of the baseline track.h failed: %s'%e,flush=True)
         if okb and open(SRC).read()==open(BAK).read(): os.remove(BAK)
-        print('track.h vracen na polaznu konfiguraciju%s.'%(' i preveden' if okb else ' (PREVODENJE NIJE USPJELO -- javi Claudeu)'),flush=True)
+        print('track.h restored to the baseline configuration%s.'%(' and compiled' if okb else ' (COMPILATION FAILED -- tell Claude)'),flush=True)
         for p,h in sh.items():
             b=p+'.p53bak'
             if os.path.exists(p) and sha(p)==h:
                 if os.path.exists(b): os.remove(b)
-                print('   provjera na kraju: %s isti kao na pocetku (SHA256)'%os.path.basename(p),flush=True)
+                print('   check at the end: %s the same as at the start (SHA256)'%os.path.basename(p),flush=True)
             elif os.path.exists(b):
                 if os.path.exists(p): os.replace(p,p+'.p53_nepoznat')
-                os.replace(b,p); print('   !! %s se promijenio -- VRACEN iz sigurnosne kopije; javi Claudeu'%os.path.basename(p),flush=True)
+                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; tell Claude'%os.path.basename(p),flush=True)
         if os.path.exists(LOCK): os.remove(LOCK)
-    print('GPU dio gotov (%.0f min).'%((time.time()-t0)/60),flush=True)
+    print('GPU part done (%.0f min).'%((time.time()-t0)/60),flush=True)
     return True
-# ======================================================================= ocjena
+# ======================================================================= evaluation
 def ocjena():
     import trackeval
     from scipy.stats import wilcoxon
@@ -241,15 +241,15 @@ def ocjena():
             res[int(q[1:])]={'HOTA':m('HOTA'),'DetA':m('DetA'),'AssA':m('AssA'),'AssRe':m('AssRe'),'AssPr':m('AssPr'),
                              'IDF1':float(h['Identity']['IDF1']),'MOTA':float(h['CLEAR']['MOTA']),'IDSW':float(h['CLEAR']['IDSW'])}
         C[key]={'sig':sg,'res':{str(s):v for s,v in res.items()}}; json.dump(C,open(O+'/te_cache.json','w')); return res
-    P('=== p53: rastav i osjetljivost konacne varijante, YOLO11m, 16 SSMOT snimaka (TrackEval); plan zapisan prije pokretanja (claude/p53_rastav_11m_plan.md)')
+    P('=== p53: decomposition and sensitivity of the final variant, YOLO11m, 16 SSMOT sequences (TrackEval); plan written before the run (claude/p53_rastav_11m_plan.md)')
     FILES={'base':{s:P52%('base',s) for s in SS16},'final':{s:P52%('final',s) for s in SS16}}
     for v in ('cls','prob','l02','l03','c07'): FILES[v]={s:outp(v,s) for s in SS16}
-    NAME={'base':'polazna','final':'konacna varijanta','cls':'samo kazna za klasu','prob':'samo probacija',
-          'l02':'konacna, kazna 0,2','l03':'konacna, kazna 0,3','c07':'konacna, prag 0,7'}
+    NAME={'base':'baseline','final':'final variant','cls':'class penalty only','prob':'probation only',
+          'l02':'final, penalty 0.2','l03':'final, penalty 0.3','c07':'final, threshold 0.7'}
     R={}
     for k,f in FILES.items():
         miss=[s for s,p in f.items() if not json_ok(p)]
-        if miss: P('  (nema potpunih logova za "%s": nedostaje %d od 16)'%(NAME[k],len(miss))); continue
+        if miss: P('  (no complete logs for "%s": %d of 16 missing)'%(NAME[k],len(miss))); continue
         R[k]=ev(k,f); print('   TrackEval %-24s ok'%NAME[k],flush=True)
     rng=np.random.default_rng(0)
     def wp(d):
@@ -270,7 +270,7 @@ def ocjena():
     def row(k,seqs=SS16,lab=None): P('  %-28s '%(lab or NAME[k])+'  '.join(('%6.1f' if m=='IDSW' else '%6.3f')%mean(k,m,seqs) for m in MET))
     def dl(a,b,m,seqs=SS16): return [R[b][s][m]-R[a][s][m] for s in seqs]
     def show(pairs,seqs=SS16,holm_over=None,title=''):
-        """pairs: [(a, b, oznaka)] -> b - a"""
+        """pairs: [(a, b, label)] -> b - a"""
         P('  %s'%title); P('  %-42s %s'%('',' | '.join('%-25s'%m for m in MET)))
         res={}
         ps={m:[wp(dl(a,b,m,seqs)) for a,b,_ in pairs] for m in MET}
@@ -286,48 +286,48 @@ def ocjena():
         return res
     OUT={}
     st=stanje()
-    # ---- A) ponovljivost
-    P('\n=== A) PONOVLJIVOST: polazna i konacna pokrenute ponovno, usporedba s log_p52_* (svih 16 snimaka)')
+    # ---- A) reproducibility
+    P('\n=== A) REPRODUCIBILITY: baseline and final run again, comparison with log_p52_* (all 16 sequences)')
     OUT['ponovljivost']={}
     for v in ('base','final'):
         ok=[s for s in SS16 if json_ok(outp(v+'_t',s))]
         same=[s for s in ok if frames(outp(v+'_t',s))==frames(P52%(v,s))]
         diff=[s for s in ok if s not in same]
-        P('  %-18s identicno na %d od %d ponovljenih snimaka%s'%(NAME[v]+':',len(same),len(ok),('; RAZLIKUJE SE na %s'%diff) if diff else ''))
+        P('  %-18s identical on %d of %d repeated sequences%s'%(NAME[v]+':',len(same),len(ok),('; DIFFERENT on %s'%diff) if diff else ''))
         OUT['ponovljivost'][v]={'isto':same,'razlicito':diff}
-    # ---- B) rastav
+    # ---- B) decomposition
     if all(k in R for k in ('base','cls','prob','final')):
-        P('\n=== B) RASTAV (16 SSMOT snimaka, prosjek po snimci)')
+        P('\n=== B) DECOMPOSITION (16 SSMOT sequences, mean per sequence)')
         head()
         for k in ('base','cls','prob','final'): row(k)
-        OUT['rastav']=show([('base','cls','samo kazna za klasu - polazna'),('base','prob','samo probacija - polazna')],holm_over=True,
-                           title='pojedinacne komponente prema polaznoj (Wilcoxon, n = 16; H = Holm preko 2 komponente):')
-        OUT['rastav'].update(show([('base','final','konacna - polazna'),('cls','final','konacna - samo kazna (dodatak probacije)'),
-                                   ('prob','final','konacna - samo probacija (dodatak kazne)')],title='konacna varijanta i dodatak druge komponente:'))
-        P('  aditivnost (zbroj pojedinacnih ucinaka prema ucinku konacne):')
+        OUT['rastav']=show([('base','cls','class penalty only - baseline'),('base','prob','probation only - baseline')],holm_over=True,
+                           title='single components versus the baseline (Wilcoxon, n = 16; H = Holm over 2 components):')
+        OUT['rastav'].update(show([('base','final','final - baseline'),('cls','final','final - penalty only (adding the probation)'),
+                                   ('prob','final','final - probation only (adding the penalty)')],title='final variant and the addition of the other component:'))
+        P('  additivity (sum of the single effects versus the effect of the final variant):')
         add={}
         for m in ('HOTA','DetA','IDF1','IDSW'):
             a=np.mean(dl('base','cls',m)); b=np.mean(dl('base','prob',m)); c=np.mean(dl('base','final',m)); add[m]=[float(a),float(b),float(c)]
-            P('     %-5s kazna %+.4f + probacija %+.4f = %+.4f   prema konacnoj %+.4f'%(m,a,b,a+b,c) if m!='IDSW' else
-              '     %-5s kazna %+.2f + probacija %+.2f = %+.2f   prema konacnoj %+.2f'%(m,a,b,a+b,c))
+            P('     %-5s penalty %+.4f + probation %+.4f = %+.4f   versus final %+.4f'%(m,a,b,a+b,c) if m!='IDSW' else
+              '     %-5s penalty %+.2f + probation %+.2f = %+.2f   versus final %+.2f'%(m,a,b,a+b,c))
         OUT['aditivnost']=add
-        P('\n  isto BEZ SSMOT 10 (opisno; 15 snimaka):')
+        P('\n  the same WITHOUT SSMOT 10 (descriptive; 15 sequences):')
         head()
         for k in ('base','cls','prob','final'): row(k,SS15)
-        OUT['rastav_bez10']=show([('base','cls','samo kazna - polazna'),('base','prob','samo probacija - polazna'),('base','final','konacna - polazna')],SS15,
-                                 title='razlike (Wilcoxon, n = 15):')
-        P('  SSMOT 10 posebno (IDSW / HOTA): '+' | '.join('%s %d / %.3f'%(NAME[k],R[k][10]['IDSW'],R[k][10]['HOTA']) for k in ('base','cls','prob','final')))
-    # ---- C) osjetljivost
+        OUT['rastav_bez10']=show([('base','cls','penalty only - baseline'),('base','prob','probation only - baseline'),('base','final','final - baseline')],SS15,
+                                 title='differences (Wilcoxon, n = 15):')
+        P('  SSMOT 10 separately (IDSW / HOTA): '+' | '.join('%s %d / %.3f'%(NAME[k],R[k][10]['IDSW'],R[k][10]['HOTA']) for k in ('base','cls','prob','final')))
+    # ---- C) sensitivity
     sens=[k for k in ('final','l02','l03','c07') if k in R]
     if len(sens)>1:
-        P('\n=== C) OSJETLJIVOST parametara metode (glavna postavka = kazna 0,5 i prag 0,8; ostale se samo izvjestavaju)')
+        P('\n=== C) SENSITIVITY of the method parameters (main setting = penalty 0.5 and threshold 0.8; the others are only reported)')
         head()
         for k in sens: row(k)
-        OUT['osjetljivost']=show([('final',k,'%s - glavna'%NAME[k]) for k in sens[1:]],title='razlike prema glavnoj (Wilcoxon, n = 16):')
+        OUT['osjetljivost']=show([('final',k,'%s - main'%NAME[k]) for k in sens[1:]],title='differences versus the main setting (Wilcoxon, n = 16):')
         for m in ('HOTA','IDF1','IDSW'):
-            vals=[mean(k,m) for k in sens]; P('  raspon %-5s preko %d postavki: %.4f (%.4f - %.4f)'%(m,len(sens),max(vals)-min(vals),min(vals),max(vals)))
-        P('  bez SSMOT 10: '+' | '.join('%s IDSW %.1f HOTA %.3f'%(NAME[k],mean(k,'IDSW',SS15),mean(k,'HOTA',SS15)) for k in sens))
-    # ---- D) dijagnoza zamjena
+            vals=[mean(k,m) for k in sens]; P('  range %-5s over %d settings: %.4f (%.4f - %.4f)'%(m,len(sens),max(vals)-min(vals),min(vals),max(vals)))
+        P('  without SSMOT 10: '+' | '.join('%s IDSW %.1f HOTA %.3f'%(NAME[k],mean(k,'IDSW',SS15),mean(k,'HOTA',SS15)) for k in sens))
+    # ---- D) switch diagnosis
     EPS=np.finfo('float').eps
     def r2(b): return [float('%.2f'%float(x)) for x in b[:4]]
     def load_cls(p):
@@ -355,7 +355,7 @@ def ocjena():
             prev_ts=new_ts
         return evs
     names=[l.strip() for l in open(LAB11) if l.strip()] if os.path.exists(LAB11) else None
-    P('\n=== D) DIJAGNOZA ZAMJENA (TrackEval uparivanje; samoprovjera = broj jednak TrackEval IDSW)')
+    P('\n=== D) SWITCH DIAGNOSIS (TrackEval matching; self-check = count equal to TrackEval IDSW)')
     OUT['dijagnoza']={}
     ngt=sum(len({int(l.split(',')[1]) for l in open(GT%s) if l.strip()}) for s in SS16)
     for k in ('base','cls','prob','final'):
@@ -375,39 +375,39 @@ def ocjena():
         for e in allev: byk[(e['seq'],e['gt'])].append(e['f'])
         iv=[x for v in byk.values() for x in np.diff(sorted(v))]
         perseq=Counter(e['seq'] for e in allev); worst=perseq.most_common(1)[0] if perseq else (None,0)
-        nm=lambda i: names[i] if names and 0<=i<len(names) else 'klasa %d'%i
-        P('  %-22s zamjena %3d (samoprovjera %s)'%(NAME[k],n,'PROSLA' if okc else 'NIJE PROSLA'))
+        nm=lambda i: names[i] if names and 0<=i<len(names) else 'class %d'%i
+        P('  %-22s switches %3d (self-check %s)'%(NAME[k],n,'PASSED' if okc else 'FAILED'))
         if n:
-            P('     upareno u prethodnom frejmu %3.0f%% | povratak na ranije drzani ID %3.0f%% | medijan razmaka uzastopnih zamjena istog traga %s frejmova'%(
+            P('     matched in the previous frame %3.0f%% | return to an earlier held ID %3.0f%% | median gap between successive switches of the same track %s frames'%(
               100*(g_==0).mean(),100*np.mean([e['ret'] for e in allev]),('%.0f'%np.median(iv)) if iv else '-'))
-            P('     pogodeno GT tragova %d od %d | najvise na snimci SSMOT %s: %d (%.0f%%) | s promjenom klase %d od %d (%.0f%%): %s'%(
+            P('     GT tracks affected %d of %d | most in sequence SSMOT %s: %d (%.0f%%) | with a class change %d of %d (%.0f%%): %s'%(
               len(byk),ngt,worst[0],worst[1],100*worst[1]/n,clsch,known,100*clsch/max(known,1),', '.join('%s<->%s %d'%(nm(a),nm(b),c) for (a,b),c in pairs.most_common(3)) or '-'))
         OUT['dijagnoza'][k]={'n':n,'samoprovjera':okc,'prethodni_frejm':float((g_==0).mean()) if n else None,'povratak':float(np.mean([e['ret'] for e in allev])) if n else None,
                              'medijan_razmaka':float(np.median(iv)) if iv else None,'gt_tragova':len(byk),'gt_ukupno':ngt,'najgora':[worst[0],worst[1]],
                              'promjena_klase':clsch,'poznato':known}
-    # ---- E) brzina
-    P('\n=== E) BRZINA (cijela snimka, offline; "s pokretanjem" ukljucuje pokretanje cjevovoda; nagib = cista propusnost)')
+    # ---- E) speed
+    P('\n=== E) SPEED (whole sequence, offline; "with start-up" includes starting the pipeline; slope = pure throughput)')
     tm=st.get('vrijeme',{}); OUT['brzina']={}
     def fpsrow(lab,pts):
         if len(pts)<3: return
         fr=np.array([p[0] for p in pts],float); sec=np.array([p[1] for p in pts],float); slope,icpt=np.polyfit(fr,sec,1)
-        P('  %-34s %5.1f FPS s pokretanjem | iz nagiba %5.1f FPS, pokretanje oko %3.0f s  (%d snimaka)'%(lab,fr.sum()/sec.sum(),1/slope if slope>0 else float('nan'),icpt,len(pts)))
+        P('  %-34s %5.1f FPS with start-up | from the slope %5.1f FPS, start-up about %3.0f s  (%d sequences)'%(lab,fr.sum()/sec.sum(),1/slope if slope>0 else float('nan'),icpt,len(pts)))
         OUT['brzina'][lab]={'s_pokretanjem':float(fr.sum()/sec.sum()),'nagib':float(1/slope) if slope>0 else None,'pokretanje_s':float(icpt),'n':len(pts)}
-    for v,_,name in VARS: fpsrow('vlastiti, '+name,[tm['%s|%d'%(v,s)] for s in SS16 if '%s|%d'%(v,s) in tm])
+    for v,_,name in VARS: fpsrow('ours, '+name,[tm['%s|%d'%(v,s)] for s in SS16 if '%s|%d'%(v,s) in tm])
     try:
         t44=json.load(open(S+'/p44/vrijeme.json'))
         for t,lab in (('nvsort','NvSORT'),('deep','NvDeepSORT'),('dcf1','NvDCF r1'),('dcf2','NvDCF r2')):
             fpsrow('%s (p44, probe_to_json)'%lab,[t44['%s|%d'%(t,s)] for s in SS16 if '%s|%d'%(t,s) in t44])
-    except Exception: P('  (nema scpilot/p44/vrijeme.json za NVIDIA trackere)')
+    except Exception: P('  (no scpilot/p44/vrijeme.json for the NVIDIA trackers)')
     OUT['srednje']={k:{m:mean(k,m) for m in MET+['AssRe','MOTA']} for k in R}
     OUT['po_snimkama']={k:{str(s):v for s,v in R[k].items()} for k in R}
     json.dump(OUT,open(O+'/p53_sve.json','w'),indent=1,default=float)
-    open(S+'/p53_rastav_11m.txt','w').write('\n'.join(L)+'\n'); print('\nrezultat: %s/p53_rastav_11m.txt'%S)
+    open(S+'/p53_rastav_11m.txt','w').write('\n'.join(L)+'\n'); print('\nresult: %s/p53_rastav_11m.txt'%S)
 if __name__=='__main__':
     if '--vrati' in sys.argv:
         os.makedirs(O,exist_ok=True)
-        if alive(LOCK): sys.exit('!! p53 jos radi (PID %s) -- ne vracaj dok radi.'%alive(LOCK))
-        vrati(); print('gotovo.')
+        if alive(LOCK): sys.exit('!! p53 is still running (PID %s) -- do not restore while it runs.'%alive(LOCK))
+        vrati(); print('done.')
     elif '--eval' in sys.argv: ocjena()
     else:
         runs(); ocjena()

@@ -15,7 +15,7 @@ void Kalman::init(double cx, double cy, double a, double h)
 void Kalman::predict()
 {
     double h = x(3);
-    // F: konstantna brzina
+    // F: constant velocity
     Eigen::Matrix<double,8,8> F = Eigen::Matrix<double,8,8>::Identity();
     for (int i = 0; i < 4; i++) F(i, i+4) = 1.0;
 
@@ -46,7 +46,7 @@ void Kalman::update(double cx, double cy, double a, double h)
     Eigen::Matrix<double,8,8> I = Eigen::Matrix<double,8,8>::Identity();
     P = (I - K * H) * P;
 
-    if (x(3) < 1.0)  x(3) = 1.0;    // visina ne smije pasti na nulu
+    if (x(3) < 1.0)  x(3) = 1.0;    // the height must not drop to zero
     if (x(2) < 0.05) x(2) = 0.05;
 }
 

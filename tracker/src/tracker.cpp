@@ -3,7 +3,7 @@
 #include "hungarian.h"
 #include <algorithm>
 
-// najveca kosinusna slicnost prema galeriji traga
+// highest cosine similarity to the track gallery
 static float bestSim(const std::deque<std::vector<float>> &g,
                         const std::vector<float> &f)
 {
@@ -18,9 +18,9 @@ static float bestSim(const std::deque<std::vector<float>> &g,
     return best;
 }
 
-// ======================= SAMOKALIBRIRAJUCA ASOCIJACIJA =======================
-// Tracker iz vlastitih potvrdenih tragova procjenjuje svojstva scene i iz njih izvodi parametre.
-// P.selfCal je bitmaska: 1 zivotni vijek, 2 tezina izgleda, 4 proba (SPRT), 8 kazna za klasu. 0 = iskljuceno.
+// ======================= SELF-CALIBRATING ASSOCIATION =======================
+// The tracker estimates properties of the scene from its own confirmed tracks and derives the parameters from them.
+// P.selfCal is a bit mask: 1 lifetime, 2 appearance weight, 4 probation (SPRT), 8 class penalty. 0 = off.
 #include <cstdlib>
 #include <cmath>
 #include <algorithm>
@@ -28,28 +28,28 @@ static float bestSim(const std::deque<std::vector<float>> &g,
 #include <map>
 #include <unordered_map>
 #include <vector>
-// FPS videa iz varijable okoline MYTRACKER_FPS (zadano 30)
+// video FPS from the environment variable MYTRACKER_FPS (default 30)
 static float envFps(){ static float f=-1.f; if(f<0.f){ const char*e=getenv("MYTRACKER_FPS"); f=e?(float)atof(e):30.f; if(f<=0.f) f=30.f; } return f; }
 namespace cal {
-    static std::deque<int>   gaps;                 // trajanja praznina potvrdenih tragova (frejmovi)
-    static std::deque<float> simSame, simDiff;     // slicnosti izgleda: isti trag / razliciti tragovi
-    static std::map<std::pair<int,int>,float> frameSim;   // slicnosti izracunate u ovom frejmu (i,j)
-    static const int NB=5;                          // razredi pouzdanosti detekcije
+    static std::deque<int>   gaps;                 // gap durations of confirmed tracks (frames)
+    static std::deque<float> simSame, simDiff;     // appearance similarities: same track / different tracks
+    static std::map<std::pair<int,int>,float> frameSim;   // similarities computed in this frame (i,j)
+    static const int NB=5;                          // detection confidence bins
     static double confTrue[NB]={0}, confFalse[NB]={0};
-    static std::unordered_map<uint64_t,std::vector<float>> early;   // pouzdanosti prvih detekcija traga
+    static std::unordered_map<uint64_t,std::vector<float>> early;   // confidences of the first detections of a track
     static std::map<std::pair<int,int>,double> clsCount; static std::map<int,double> clsTotal;
-    static int   maxAgeFrames=-1;                  // izracunato na pocetku frejma
+    static int   maxAgeFrames=-1;                  // computed at the start of the frame
     static float wReidNow=-1.f;
     template<class D> static void push(D &d, typename D::value_type v, size_t cap){ d.push_back(v); while(d.size()>cap) d.pop_front(); }
     static int bin(float c){ int b=(int)(c*NB); return b<0?0:(b>=NB?NB-1:b); }
 }
 template<class PP> static int baseMaxAge(const PP &p){ return p.maxAgeSec > 0.f ? (int)std::lround(p.maxAgeSec*envFps()) : p.maxAge; }
 template<class PP> static int effMaxAge (const PP &p){ return ((p.selfCal & 1) && cal::maxAgeFrames > 0) ? cal::maxAgeFrames : baseMaxAge(p); }
-// ---- pravilo probe v2: proba = probFrac * tipicno trajanje traga (iz vlastitih tragova) ----
-// Tipicno trajanje = medijan RASPONA tragova PONDERIRAN brojem uparivanja (procjenitelj E6):
-// neosjetljiv na mnogo kratkih laznih tragova i na povratnu spregu kratke probe.
+// ---- probation rule v2: probation = probFrac * typical track duration (from its own tracks) ----
+// Typical duration = median of the track SPANS WEIGHTED by the number of matches (estimator E6):
+// insensitive to many short false tracks and to the feedback of a short probation.
 namespace cal {
-    static std::deque<std::pair<int,int>> doneLen;   // (raspon, broj uparivanja) zavrsenih potvrdenih tragova
+    static std::deque<std::pair<int,int>> doneLen;   // (span, number of matches) of finished confirmed tracks
     static int probNow=-1, probL=-1;
 }
 static void calDone(int span,int hits){ if (span>0 && hits>0) cal::push(cal::doneLen,std::make_pair(span,hits),300); }
@@ -58,7 +58,7 @@ template<class PP,class TV> static void calTrackStats(const PP &p,const TV &trac
     if (!p.probRule) return;
     std::vector<std::pair<int,int>> L(cal::doneLen.begin(), cal::doneLen.end());
     for (const auto &t: tracks) if (t.confirmed && t.hits>0) L.push_back(std::make_pair(t.age - t.framesSinceSeen + 1, t.hits));
-    if ((int)L.size() < 5) { cal::probNow = 2; return; }            // dok nema statistike: najkraca proba
+    if ((int)L.size() < 5) { cal::probNow = 2; return; }            // while there are no statistics: shortest probation
     std::sort(L.begin(), L.end());
     double W=0; for (auto &x: L) W+=x.second;
     double c=0; int med=L.back().first;
@@ -68,8 +68,8 @@ template<class PP,class TV> static void calTrackStats(const PP &p,const TV &trac
 }
 template<class PP> static int effMinHits(const PP &p){ if (p.probRule && cal::probNow > 0) return cal::probNow; return p.minHitsSec > 0.f ? std::max(1,(int)std::lround(p.minHitsSec*envFps())) : p.minHits; }
 template<class PP> static float calWReid(const PP &p){ return ((p.selfCal & 2) && cal::wReidNow >= 0.f) ? cal::wReidNow : p.wReid; }
-// ---- dijagnosticki zapis samokalibracije (samo cita statistiku, ne mijenja pracenje) ----
-// Ukljucuje se varijablom okoline MYTRACKER_CALLOG=<putanja>; zapisuje se svakih 50 frejmova.
+// ---- diagnostic log of the self-calibration (only reads the statistics, does not change the tracking) ----
+// Enabled with the environment variable MYTRACKER_CALLOG=<path>; written every 50 frames.
 #include <cstdio>
 template<class PP> static void calDump(const PP &p){
     static int frame=0; static const char *path=getenv("MYTRACKER_CALLOG");
@@ -99,7 +99,7 @@ template<class PP> static void calDump(const PP &p){
     fprintf(f,"]}}\n"); fclose(f);
 }
 
-// poziva se na pocetku svakog frejma: osvjezava izvedene parametre iz nakupljene statistike
+// called at the start of every frame: refreshes the derived parameters from the accumulated statistics
 template<class PP> static void calBeginFrame(const PP &p){
     calDump(p);
     cal::frameSim.clear();
@@ -118,7 +118,7 @@ template<class PP> static void calBeginFrame(const PP &p){
     }
 }
 static void calSim(int i,int j,float s){ cal::frameSim[{i,j}]=s; }
-// nakon uparivanja: slicnost s vlastitim tragom -> "isti", s drugim potvrdenim tragovima -> "razliciti"
+// after matching: similarity to its own track -> "same", to other confirmed tracks -> "different"
 template<class TV> static void calCollect(const TV &tracks,int i,int j){
     if (!tracks[i].confirmed) return;
     auto it=cal::frameSim.find({i,j}); if (it!=cal::frameSim.end()) cal::push(cal::simSame,it->second,2000);
@@ -128,17 +128,17 @@ template<class TV> static void calCollect(const TV &tracks,int i,int j){
         auto jt=cal::frameSim.find({k,j}); if (jt!=cal::frameSim.end()){ cal::push(cal::simDiff,jt->second,4000); n++; }
     }
 }
-// praznina potvrdenog traga koji je ponovno uparen
+// gap of a confirmed track that was matched again
 static void calGap(bool confirmed,int framesSinceSeen){ if (confirmed && framesSinceSeen>1) cal::push(cal::gaps,framesSinceSeen-1,500); }
-// pouzdanosti prvih 20 detekcija traga (za SPRT)
+// confidences of the first 20 detections of a track (for SPRT)
 static void calEarly(uint64_t id,int hits,float conf){ if (hits<20) cal::early[id].push_back(conf); }
-// oznaka traga: stvaran (dosegao 30 uparivanja) ili lazan (obrisan prije potvrde)
+// track label: real (reached 30 matches) or false (deleted before confirmation)
 static void calLabel(uint64_t id,bool real){
     auto it=cal::early.find(id); if (it==cal::early.end()) return;
     for (float c: it->second) (real?cal::confTrue:cal::confFalse)[cal::bin(c)] += 1.0;
     cal::early.erase(it);
 }
-// SPRT: potvrdi kad je nakupljeni omjer izglednosti iznad praga A = log((1-alpha)/alpha)
+// SPRT: confirm when the accumulated likelihood ratio is above the threshold A = log((1-alpha)/alpha)
 template<class PP> static bool calConfirm(const PP &p,uint64_t id){
     if (!(p.selfCal & 4)) return false;
     double nT=0,nF=0; for (int b=0;b<cal::NB;b++){ nT+=cal::confTrue[b]; nF+=cal::confFalse[b]; }
@@ -149,7 +149,7 @@ template<class PP> static bool calConfirm(const PP &p,uint64_t id){
         s += std::log(((cal::confTrue[b]+1.0)/(nT+cal::NB)) / ((cal::confFalse[b]+1.0)/(nF+cal::NB))); }
     return s >= A;
 }
-// prijelazi klase unutar potvrdenog traga uparenog i u proslom frejmu
+// class transitions within a confirmed track that was also matched in the previous frame
 static void calClass(bool use,int a,int b){ if (!use) return; cal::clsCount[{a,b}]+=1.0; cal::clsTotal[a]+=1.0; }
 template<class PP> static float calClassPen(const PP &p,int a,int b){
     if (!(p.selfCal & 8)) return p.classPenalty;
@@ -158,7 +158,7 @@ template<class PP> static float calClassPen(const PP &p,int a,int b){
     double pr=(n+1.0)/(t->second+8.0);
     return (float)std::min(1.0, p.calKappa * (-std::log(pr)));
 }
-// ===================== kraj samokalibrirajuce asocijacije =====================
+// ===================== end of the self-calibrating association =====================
 
 
 void Tracker::associate(std::vector<Detection> &dets)
@@ -177,7 +177,7 @@ void Tracker::associate(std::vector<Detection> &dets)
             float c = P.wIou  * (1.0f - iou(tracks[i].box, dets[j].box))
                     + P.wSize * (1.0f - sizeSim(tracks[i].box, dets[j].box));
             c /= (P.wIou + P.wSize);
-            // appearance clan -- ulazi ovisno o reidAfterN
+            // appearance term -- used depending on reidAfterN
             if (P.useReid && !dets[j].feature.empty() &&
                 tracks[i].framesSinceSeen >= P.reidAfterN)
             {
@@ -189,7 +189,7 @@ void Tracker::associate(std::vector<Detection> &dets)
                     calSim(i, j, sim);
                 }
             }
-            // temporalna inercija: popust ako je ovaj trag drzao ovu detekciju
+            // temporal inertia: discount if this track held this detection
             if (tracks[i].hadMatch &&
                 iou(tracks[i].lastMatched, dets[j].box) > 0.5f)
                 c -= P.inertia;
@@ -205,8 +205,8 @@ void Tracker::associate(std::vector<Detection> &dets)
     }
 }
 
-// Ukloni detekcije koje se medusobno jako preklapaju (fragmentacija detektora).
-// Zadrzava se ona s visom pouzdanoscu.
+// Remove detections that strongly overlap each other (detector fragmentation).
+// The one with the higher confidence is kept.
 static void suppressOverlapping(std::vector<Detection> &dets, float thr)
 {
     if (thr >= 1.0f || dets.size() < 2) return;
@@ -228,23 +228,23 @@ static void suppressOverlapping(std::vector<Detection> &dets, float thr)
 
 std::vector<std::pair<uint64_t,bool>> Tracker::update(std::vector<Detection> &dets)
 {
-    // 0. spoji fragmentirane detekcije
+    // 0. merge fragmented detections
     dets.erase(std::remove_if(dets.begin(), dets.end(),
         [&](const Detection &d){ return d.confidence < P.minConf; }), dets.end());
     suppressOverlapping(dets, P.detNms);
 
-    // 1. predikcija
+    // 1. prediction
     for (auto &t : tracks) {
         t.age++; t.framesSinceSeen++;
-        t.hadMatch = (t.framesSinceSeen == 1);   // uparen bas proslog frejma
+        t.hadMatch = (t.framesSinceSeen == 1);   // matched exactly in the previous frame
         t.predict();
     }
 
     calTrackStats(P, tracks);
-    // 2. uparivanje na predikcijama
+    // 2. matching on the predictions
     associate(dets);
 
-    // 3. korekcija uparenih
+    // 3. correction of the matched
     std::vector<std::pair<uint64_t,bool>> out(dets.size(), {0,false});
     for (size_t j = 0; j < dets.size(); j++) {
         int i = dets[j].matchedTrack;
@@ -268,7 +268,7 @@ std::vector<std::pair<uint64_t,bool>> Tracker::update(std::vector<Detection> &de
         out[j] = { t.id, t.confirmed };
     }
 
-    // 4. novi tragovi
+    // 4. new tracks
     Kalman proto;
     proto.wPos = P.wPos; proto.wVel = P.wVel; proto.wMeas = P.wMeas;
     for (size_t j = 0; j < dets.size(); j++) {
@@ -281,8 +281,8 @@ std::vector<std::pair<uint64_t,bool>> Tracker::update(std::vector<Detection> &de
         out[j] = { tracks.back().id, tracks.back().confirmed };
     }
 
-    // 5. uklanjanje duplikata -- dva traga na istom objektu
-    //    Zadrzava se onaj s vise uparivanja; kod izjednacenja stariji.
+    // 5. removal of duplicates -- two tracks on the same object
+    //    The one with more matches is kept; on a tie, the older one.
     if (P.dupIou < 1.0f) {
         std::vector<char> drop(tracks.size(), 0);
         for (size_t i = 0; i < tracks.size(); i++) {
@@ -304,10 +304,10 @@ std::vector<std::pair<uint64_t,bool>> Tracker::update(std::vector<Detection> &de
         tracks.erase(tracks.begin() + k, tracks.end());
     }
 
-    // samokalibracija: trag obrisan prije potvrde je lazan
+    // self-calibration: a track deleted before confirmation is false
     for (auto &t : tracks) if (t.framesSinceSeen > effMaxAge(P)) { if (!t.confirmed) calLabel(t.id, false); else { cal::early.erase(t.id); calDone(t.age - t.framesSinceSeen + 1, t.hits); } }
 
-    // 6. brisanje starih
+    // 6. deletion of old tracks
     tracks.erase(std::remove_if(tracks.begin(), tracks.end(),
         [&](const Track &t){ return t.framesSinceSeen > effMaxAge(P); }), tracks.end());
 

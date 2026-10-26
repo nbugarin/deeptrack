@@ -74,7 +74,18 @@ Each script in `experiments/` describes at the top what it does, what it needs a
 
 `pipeline/probe_moj*.py` run the pipeline with our library and `pipeline/probe_to_json*.py` with an NVIDIA tracker; the `_p55` versions set the stream multiplexer to 1280×720, the others to 1920×1080. They are called as `python3 probe_moj_p55.py <video> <tracker config> <output.json> [<nvinfer config>]`. `pipeline/id_smooth.py` provides the loaders used in the evaluation; its ID-smoothing function is not applied in any experiment of the article.
 
-The comments and the output of the scripts are in Croatian.
+Comments, descriptions and printed output are in English. File names, command-line options and the keys in the JSON result files keep their original Croatian names, so that they match the files written in the runs reported in the article. The options are:
+
+| Option | Meaning | Scripts |
+|---|---|---|
+| `--eval`, `--analiza` | evaluation only, from existing logs (no GPU) | `p44`, `p52`–`p56`; `p60_fvessel`, `p64`–`p67` |
+| `--vrati` | restore `track.h` and the engines after an interrupted run | `p44`, `p52`–`p55`, `p60_fvessel`, `p67` |
+| `--popravi` | repair after two simultaneous runs | `p55` |
+| `--provjera`, `--dijagnoza` | quick check of the BoxMOT trackers; full traceback of the first error | `p56` |
+| `--det=coco`, `--det=ssmot` | choice of detector | `p60_fvessel`, `p64` |
+| `--pomak=K` | fixed frame offset K (sensitivity) | `p60_fvessel`, `p64` |
+| `--samo-detektor` | detector check only | `p63` |
+| `--fvessel-pomaci`, `--laece`, `--gmm` | additional analyses of the companion calibration study | `p67` |
 
 ## Data and models
 
@@ -82,7 +93,7 @@ No data and no model weights are included. See [data/README.md](data/README.md) 
 
 ## Use of generative AI
 
-Parts of the experiment and evaluation scripts and of this documentation were written with the assistance of a generative AI system (Claude, Anthropic). The authors reviewed them and are responsible for them.
+Parts of the experiment and evaluation scripts and of this documentation were written with the assistance of a generative AI system (Claude, Anthropic). The English translation of the comments and messages in all files, including the C++ library, was also made with its assistance; the translation changed only comments and text, not code. The authors reviewed them and are responsible for them.
 
 ## License
 

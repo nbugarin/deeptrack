@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""p56: USPOREDBA SA SOTA TRACKERIMA NA ISTIM DETEKCIJAMA -- YOLO11m, DeepStream detekcije na 1280x720 (p54 ds_mux), 16 SSMOT snimaka
+"""p56: COMPARISON WITH SOTA TRACKERS ON THE SAME DETECTIONS -- YOLO11m, DeepStream detections at 1280x720 (p54 ds_mux), 16 SSMOT sequences
 
-Plan zapisan PRIJE pokretanja (projekt: claude/p56_iste_detekcije_plan.md).
-Svi trackeri dobivaju iste detekcije: BoxMOT trackeri citaju scpilot/p54/det/ds_mux_<n>.json (izlaz nvinfer, config_infer_11m.txt,
-streammux 1280x720); vlastiti tracker i NVIDIA trackeri u p55 dobivaju upravo te detekcije unutar DeepStreama.
-BoxMOT: ByteTrack, BoT-SORT, OC-SORT, Deep OC-SORT, StrongSORT, Hybrid-SORT, BoostTrack (ImprAssoc) -- koliko ih instalirana verzija ima;
-ZADANE postavke biblioteke, model izgleda /workspace/osnet_x1_0_vessel.pt (kao p31), frame_rate = FPS snimke, obvezni parametri bez
-zadane vrijednosti = 0.25. Nista se ne podesava. Ne dira track.h, engine-e ni konfiguracije; pise samo u scpilot/p56.
-Pokretanje (GPU slobodan, p55 gotov):  nohup python3 /workspace/p56_iste_detekcije.py > /workspace/p56_out.txt 2>&1 &
-Pracenje: tail -3 /workspace/p56_out.txt     Samo ocjena: python3 /workspace/p56_iste_detekcije.py --eval
-Provjera BoxMOT-a prije pokretanja (par sekundi): python3 /workspace/p56_iste_detekcije.py --provjera
-Izlaz: /workspace/scpilot/p56_iste_detekcije.txt (+ scpilot/p56/p56_sve.json); ponovno pokretanje nastavlja (gotovi trackeri se preskacu)
+Plan written BEFORE the run (project: claude/p56_iste_detekcije_plan.md).
+All trackers get the same detections: the BoxMOT trackers read scpilot/p54/det/ds_mux_<n>.json (output of nvinfer, config_infer_11m.txt,
+streammux 1280x720); our tracker and the NVIDIA trackers in p55 get exactly these detections inside DeepStream.
+BoxMOT: ByteTrack, BoT-SORT, OC-SORT, Deep OC-SORT, StrongSORT, Hybrid-SORT, BoostTrack (ImprAssoc) -- as many as the installed version has;
+DEFAULT library settings, appearance model /workspace/osnet_x1_0_vessel.pt (as p31), frame_rate = FPS of the sequence, required parameters without
+a default value = 0.25. Nothing is tuned. Does not touch track.h, the engines or the configurations; writes only to scpilot/p56.
+Run (GPU free, p55 done):  nohup python3 /workspace/p56_iste_detekcije.py > /workspace/p56_out.txt 2>&1 &
+Monitoring: tail -3 /workspace/p56_out.txt     Evaluation only: python3 /workspace/p56_iste_detekcije.py --eval
+BoxMOT check before the run (a few seconds): python3 /workspace/p56_iste_detekcije.py --provjera
+Output: /workspace/scpilot/p56_iste_detekcije.txt (+ scpilot/p56/p56_sve.json); a new run resumes (finished trackers are skipped)
 """
 import os, sys, json, time, shutil, importlib, inspect, subprocess
 import numpy as np
@@ -23,11 +23,11 @@ DET=S+'/p54/det/ds_mux_%d.json'; REID=W+'/osnet_x1_0_vessel.pt'
 CAND=[('ByteTrack',['BYTETracker','ByteTrack']),('BoT-SORT',['BoTSORT','BotSort']),('OC-SORT',['OCSORT','OcSort']),
       ('Deep OC-SORT',['DeepOCSORT','DeepOcSort']),('StrongSORT',['StrongSORT','StrongSort']),('Hybrid-SORT',['HybridSORT','HybridSort']),
       ('BoostTrack',['BoostTrack']),('ImprAssoc',['ImprAssocTrack'])]
-OWN={'vlastiti, konacna':W+'/log_p55_final_ss_%d.json','vlastiti, polazna':W+'/log_p55_base_ss_%d.json'}
+OWN={'ours, final':W+'/log_p55_final_ss_%d.json','ours, baseline':W+'/log_p55_base_ss_%d.json'}
 NV={'NvSORT':W+'/log_p55_nv_nvsort_ss_%d.json','NvDeepSORT':W+'/log_p55_nv_deep_ss_%d.json','NvDCF r1':W+'/log_p55_nv_dcf1_ss_%d.json','NvDCF r2':W+'/log_p55_nv_dcf2_ss_%d.json'}
-ULT={'Ultralytics ByteTrack (vlastite detekcije)':S+'/p44/ultra_bytetrack_%d.json','Ultralytics BoT-SORT (vlastite detekcije)':S+'/p44/ultra_botsort_%d.json'}
+ULT={'Ultralytics ByteTrack (own detections)':S+'/p44/ultra_bytetrack_%d.json','Ultralytics BoT-SORT (own detections)':S+'/p44/ultra_botsort_%d.json'}
 LOCKS=[S+'/p%d/p%d.lock'%(i,i) for i in (44,45,46,47,48,52,53,54,55)]+[S+'/p43.lock',S+'/p27.lock']
-REINSTALL=('pip install --no-deps git+https://github.com/JonathonLuiten/TrackEval.git && python3 -c "import scipy, cv2, trackeval; print(\'SVE OK\')"')
+REINSTALL=('pip install --no-deps git+https://github.com/JonathonLuiten/TrackEval.git && python3 -c "import scipy, cv2, trackeval; print(\'ALL OK\')"')
 L=[]
 def P(x=''): print(x,flush=True); L.append(x)
 def json_ok(p):
@@ -41,7 +41,7 @@ def alive(lock):
     return pid if pid and os.path.exists('/proc/'+pid) else None
 import atexit
 def uzmi_lock(ime):
-    """atomsko zakljucavanje na samom pocetku -- drugo pokretanje iste skripte odmah odustaje"""
+    """atomic lock at the very start -- a second run of the same script gives up immediately"""
     os.makedirs(os.path.dirname(LOCK),exist_ok=True)
     for _ in range(3):
         try:
@@ -51,10 +51,10 @@ def uzmi_lock(ime):
             try: pid=open(LOCK).read().strip(); age=time.time()-os.path.getmtime(LOCK)
             except FileNotFoundError: continue
             if (pid and os.path.exists('/proc/'+pid)) or (not pid and age<10):
-                sys.exit('!! %s vec radi (PID %s) -- NE pokreci dvaput (provjeri naredbom: jobs).'%(ime,pid or '?'))
+                sys.exit('!! %s is already running (PID %s) -- do NOT run twice (check with the command: jobs).'%(ime,pid or '?'))
             try: os.remove(LOCK)
             except FileNotFoundError: pass
-    sys.exit('!! ne mogu uzeti zakljucavanje %s'%LOCK)
+    sys.exit('!! cannot take the lock %s'%LOCK)
 def pusti_lock():
     try:
         if open(LOCK).read().strip()==str(os.getpid()): os.remove(LOCK)
@@ -65,14 +65,14 @@ def stanje():
 def spremi(st): json.dump(st,open(O+'/stanje.json','w'),indent=1)
 def outp(name,s): return TR+'/%s_%d.json'%(name.replace(' ','_').replace('-',''),s)
 # ======================================================================= BoxMOT
-PRESKOK={'IndexError':0,'ValueError':0}   # koliko je puta preskocen ponovni izracun Kalmana nakon prekida (unfreeze)
+PRESKOK={'IndexError':0,'ValueError':0}   # how many times the recomputation of the Kalman filter after a gap was skipped (unfreeze)
 def boxmot_setup():
     for _o,_n in [('ultralytics.yolo','ultralytics'),('ultralytics.yolo.utils','ultralytics.utils'),('ultralytics.yolo.v8','ultralytics.models.yolo'),
                   ('ultralytics.yolo.v8.detect','ultralytics.models.yolo.detect'),('ultralytics.yolo.engine','ultralytics.engine'),('ultralytics.yolo.engine.model','ultralytics.engine.model')]:
         try: sys.modules.setdefault(_o,importlib.import_module(_n))
         except Exception: pass
     import boxmot
-    try:   # zakrpa kao p31 (IndexError, OC-SORT) + ValueError: unfreeze u BoxMOT 10.0.83 raspakira 4 broja, a Hybrid-SORT cuva 5 (s pouzdanoscu)
+    try:   # patch as in p31 (IndexError, OC-SORT) + ValueError: unfreeze in BoxMOT 10.0.83 unpacks 4 numbers, while Hybrid-SORT stores 5 (with the confidence)
         import boxmot.motion.kalman_filters.xysr_kf as _X
         for _c in list(vars(_X).values()):
             if isinstance(_c,type) and hasattr(_c,'unfreeze'):
@@ -96,34 +96,34 @@ def kwargs_for(cls_,dev,fr):
         elif n=='per_class': kw[n]=False
         elif p.default is inspect.Parameter.empty:
             if n in ('det_thresh','track_thresh','min_conf','conf'): kw[n]=0.25
-            else: raise TypeError('obvezni parametar bez zadane vrijednosti: %s'%n)
+            else: raise TypeError('required parameter without a default value: %s'%n)
         else: continue
         used[n]=str(kw[n])
     return kw,used
 def runs():
     try:
         import scipy, trackeval, cv2, torch   # noqa: F401
-    except Exception as e: sys.exit('!! nedostaje paket (%s). Prvo: %s'%(e,REINSTALL))
+    except Exception as e: sys.exit('!! missing package (%s). First: %s'%(e,REINSTALL))
     os.makedirs(TR,exist_ok=True)
     uzmi_lock('p56')
     for lk in LOCKS:
-        if alive(lk): sys.exit('!! %s jos radi (PID %s) -- pokreni p56 kad zavrsi.'%(os.path.basename(lk).split('.')[0],alive(lk)))
+        if alive(lk): sys.exit('!! %s is still running (PID %s) -- run p56 when it finishes.'%(os.path.basename(lk).split('.')[0],alive(lk)))
     if os.environ.get('P56_NOGPU')!='1':
         try:
             used=int(subprocess.run(['nvidia-smi','--query-gpu=memory.used','--format=csv,noheader,nounits'],capture_output=True,text=True).stdout.split()[0])
-            print('GPU memorija u upotrebi: %d MiB'%used,flush=True)
-            if used>1500: sys.exit('GPU je zauzet (>1500 MiB) -- nesto drugo radi na GPU-u. Pricekaj da zavrsi.')
-        except (IndexError,ValueError,FileNotFoundError): print('upozorenje: nvidia-smi nije dao podatak, nastavljam',flush=True)
+            print('GPU memory in use: %d MiB'%used,flush=True)
+            if used>1500: sys.exit('GPU is busy (>1500 MiB) -- something else is running on the GPU. Wait until it finishes.')
+        except (IndexError,ValueError,FileNotFoundError): print('warning: nvidia-smi gave no data, continuing',flush=True)
     miss=[p for p in [REID]+[DET%s for s in SS16]+[VID%s for s in SS16] if not os.path.exists(p)]
-    if miss: sys.exit('!! nedostaje (p54 mora biti gotov; model izgleda kao u p31):\n   '+'\n   '.join(miss))
+    if miss: sys.exit('!! missing (p54 must be done; appearance model as in p31):\n   '+'\n   '.join(miss))
     import cv2, torch
     boxmot=boxmot_setup(); dev=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    print('BoxMOT verzija: %s; uredaj: %s'%(getattr(boxmot,'__version__','?'),dev),flush=True)
+    print('BoxMOT version: %s; device: %s'%(getattr(boxmot,'__version__','?'),dev),flush=True)
     st=stanje(); st.setdefault('postavke',{}); st.setdefault('vrijeme',{}); st.setdefault('nema',[])
     avail=[]
     for name,cands in CAND:
         c=next((getattr(boxmot,x) for x in cands if hasattr(boxmot,x)),None)
-        if c is None: print('  %-13s nema u ovoj verziji BoxMOT-a -- preskacem'%name,flush=True); st['nema']=sorted(set(st['nema'])|{name}); continue
+        if c is None: print('  %-13s not in this version of BoxMOT -- skipping'%name,flush=True); st['nema']=sorted(set(st['nema'])|{name}); continue
         avail.append((name,c))
     spremi(st)
     DE={s:json.load(open(DET%s)) for s in SS16}
@@ -131,14 +131,14 @@ def runs():
     try:
         for name,cls_ in avail:
             todo=[s for s in SS16 if not json_ok(outp(name,s))]
-            if not todo: print('  %-13s vec gotov'%name,flush=True); continue
+            if not todo: print('  %-13s already done'%name,flush=True); continue
             pal=False
             for s in todo:
                 PRESKOK['IndexError']=0; PRESKOK['ValueError']=0
                 cap=cv2.VideoCapture(VID%s); fr=cap.get(cv2.CAP_PROP_FPS) or 25.0
                 try: kw,used=kwargs_for(cls_,dev,fr); t=cls_(**kw)
                 except Exception as e:
-                    print('  !! %s se ne moze napraviti (%s: %s) -- preskacem'%(name,type(e).__name__,e),flush=True); st['nema']=sorted(set(st['nema'])|{name}); spremi(st); break
+                    print('  !! %s cannot be created (%s: %s) -- skipping'%(name,type(e).__name__,e),flush=True); st['nema']=sorted(set(st['nema'])|{name}); spremi(st); break
                 st['postavke'][name]=used
                 byf={int(fd['frame']):fd.get('detections') or [] for fd in DE[s]}; f=0; T=[]; ttr=0.0; nf_det=len(DE[s])
                 try:
@@ -150,18 +150,18 @@ def runs():
                         ta=time.time(); o=t.update(d,img); ttr+=time.time()-ta
                         T.append({'frame':f,'detections':[{'id':int(r[4]),'box':[float(r[0]),float(r[1]),float(r[2]-r[0]),float(r[3]-r[1])]} for r in (o if o is not None else [])]})
                 except Exception as e:
-                    print('  !! %s pao na SSMOT_%d, frejm %d (%s: %s) -- preskacem taj tracker'%(name,s,f,type(e).__name__,e),flush=True)
+                    print('  !! %s failed on SSMOT_%d, frame %d (%s: %s) -- skipping that tracker'%(name,s,f,type(e).__name__,e),flush=True)
                     st['nema']=sorted(set(st['nema'])|{name}); st.setdefault('greske',{})[name]='%s: %s'%(type(e).__name__,e); spremi(st); pal=True; break
-                if f!=nf_det: print('  napomena: SSMOT_%d -- snimka ima %d frejmova, detekcije %d'%(s,f,nf_det),flush=True)
+                if f!=nf_det: print('  note: SSMOT_%d -- the sequence has %d frames, the detections %d'%(s,f,nf_det),flush=True)
                 json.dump(T,open(outp(name,s)+'.tmp','w')); os.replace(outp(name,s)+'.tmp',outp(name,s))
                 st['vrijeme']['%s|%d'%(name,s)]=[f,ttr]; st.setdefault('preskok',{})['%s|%d'%(name,s)]=dict(PRESKOK); spremi(st); del t
-                print('  %-13s SSMOT %-2d ok (%.0f s praćenja; ukupno %.0f min)'%(name,s,ttr,(time.time()-t0)/60),flush=True)
+                print('  %-13s SSMOT %-2d ok (%.0f s of tracking; total %.0f min)'%(name,s,ttr,(time.time()-t0)/60),flush=True)
             if not pal and all(json_ok(outp(name,s)) for s in SS16):
                 st['nema']=[x for x in st['nema'] if x!=name]; st.get('greske',{}).pop(name,None); spremi(st)
     finally:
         pusti_lock()
-    print('GPU dio gotov (%.0f min).'%((time.time()-t0)/60),flush=True)
-# ======================================================================= ocjena
+    print('GPU part done (%.0f min).'%((time.time()-t0)/60),flush=True)
+# ======================================================================= evaluation
 def ocjena():
     import trackeval
     from scipy.stats import wilcoxon
@@ -201,13 +201,13 @@ def ocjena():
     for k,pt in list(OWN.items())+list(NV.items()): SETS[k]=('ds',{s:pt%s for s in SS16})
     for name,_ in CAND: SETS[name]=('bm',{s:outp(name,s) for s in SS16})
     for k,pt in ULT.items(): SETS[k]=('ul',{s:pt%s for s in SS16})
-    P('=== p56: usporedba na ISTIM detekcijama (DeepStream, YOLO11m, streammux 1280x720, prag 0.25), 16 SSMOT snimaka, TrackEval')
-    P('    plan zapisan prije pokretanja: claude/p56_iste_detekcije_plan.md; BoxMOT sa zadanim postavkama, model izgleda osnet_x1_0_vessel.pt')
-    if st.get('nema'): P('    nema u instaliranoj verziji BoxMOT-a / ne moze se napraviti: %s'%', '.join(st['nema']))
+    P('=== p56: comparison on the SAME detections (DeepStream, YOLO11m, streammux 1280x720, threshold 0.25), 16 SSMOT sequences, TrackEval')
+    P('    plan written before the run: claude/p56_iste_detekcije_plan.md; BoxMOT with default settings, appearance model osnet_x1_0_vessel.pt')
+    if st.get('nema'): P('    not in the installed version of BoxMOT / cannot be created: %s'%', '.join(st['nema']))
     R={}; GRP={}
     for k,(g,f) in SETS.items():
         if all(json_ok(p) for p in f.values()): R[k]=ev(k,f); GRP[k]=g; print('   TrackEval %-44s ok'%k,flush=True)
-        elif g!='bm' or k not in st.get('nema',[]): P('  (nema svih logova za "%s")'%k)
+        elif g!='bm' or k not in st.get('nema',[]): P('  (not all logs for "%s")'%k)
     def wp(d):
         d=np.array(d,float)
         if not np.any(d!=0): return 1.0
@@ -220,19 +220,19 @@ def ocjena():
     fp=lambda p: '< 0.001' if p<0.001 else '%.3f'%p
     MET=['HOTA','DetA','AssA','AssPr','IDF1','IDSW']
     mean=lambda k,m: float(np.mean([R[k][s][m] for s in SS16]))
-    P('\n=== A) SVI TRACKERI (prosjek po snimci)')
+    P('\n=== A) ALL TRACKERS (mean per sequence)')
     P('  %-46s '%''+'  '.join('%6s'%m for m in MET))
-    for g,lab in (('ds','iste detekcije -- DeepStream trackeri (p55)'),('bm','iste detekcije -- BoxMOT, zadane postavke'),('ul','DRUGE detekcije -- Ultralytics end-to-end (p44)')):
+    for g,lab in (('ds','same detections -- DeepStream trackers (p55)'),('bm','same detections -- BoxMOT, default settings'),('ul','OTHER detections -- Ultralytics end-to-end (p44)')):
         ks=[k for k in R if GRP[k]==g]
         if not ks: continue
         P('  [%s]'%lab)
         for k in sorted(ks,key=lambda k:-mean(k,'HOTA')): P('  %-46s '%k+'  '.join(('%6.1f' if m=='IDSW' else '%6.3f')%mean(k,m) for m in MET))
     OUT={'srednje':{k:{m:mean(k,m) for m in MET+['AssRe','MOTA','LocA']} for k in R},'po_snimkama':{k:{str(s):v for s,v in R[k].items()} for k in R},
          'postavke':st.get('postavke',{}),'nema':st.get('nema',[])}
-    me='vlastiti, konacna'
-    refs=[k for k in R if GRP[k] in ('bm','ds') and not k.startswith('vlastiti')]
+    me='ours, final'
+    refs=[k for k in R if GRP[k] in ('bm','ds') and not k.startswith('ours')]
     if me in R and refs:
-        P('\n=== B) VLASTITI (konacna) MINUS SVAKI TRACKER NA ISTIM DETEKCIJAMA (Wilcoxon, n = 16; H = Holm preko %d usporedbi po metrici)'%len(refs))
+        P('\n=== B) OURS (final) MINUS EACH TRACKER ON THE SAME DETECTIONS (Wilcoxon, n = 16; H = Holm over %d comparisons per metric)'%len(refs))
         mets=['HOTA','IDF1','AssA','DetA','IDSW']; ps={m:[wp([R[me][s][m]-R[k][s][m] for s in SS16]) for k in refs] for m in mets}; hs={m:holm(ps[m]) for m in mets}
         P('  %-26s %s'%('',' | '.join('%-30s'%m for m in mets)))
         OUT['usporedba']={}
@@ -246,46 +246,46 @@ def ocjena():
         for m in mets:
             better=[k for i,k in enumerate(refs) if hs[m][i]<0.05 and (np.mean([R[me][s][m]-R[k][s][m] for s in SS16])<0 if m=='IDSW' else np.mean([R[me][s][m]-R[k][s][m] for s in SS16])>0)]
             worse=[k for i,k in enumerate(refs) if hs[m][i]<0.05 and k not in better]
-            P('  %-5s znacajno BOLJI (Holm < 0.05) od: %s | znacajno LOSIJI od: %s'%(m,', '.join(better) or 'nijednog',', '.join(worse) or 'nijednog'))
+            P('  %-5s significantly BETTER (Holm < 0.05) than: %s | significantly WORSE than: %s'%(m,', '.join(better) or 'none',', '.join(worse) or 'none'))
         rank={m:sorted(refs+[me],key=lambda k:mean(k,m),reverse=(m!='IDSW')) for m in mets}
-        P('  mjesto vlastitog (od %d trackera na istim detekcijama): '%(len(refs)+1)+', '.join('%s %d.'%(m,rank[m].index(me)+1) for m in mets))
+        P('  rank of ours (of %d trackers on the same detections): '%(len(refs)+1)+', '.join('%s %d.'%(m,rank[m].index(me)+1) for m in mets))
         OUT['mjesto']={m:rank[m].index(me)+1 for m in mets}
     tm=st.get('vrijeme',{})
     if tm:
-        P('\n=== C) BRZINA BoxMOT trackera (samo pracenje, bez detekcije; frejmova / sekundi pracenja)')
+        P('\n=== C) SPEED of the BoxMOT trackers (tracking only, without detection; frames / seconds of tracking)')
         for name,_ in CAND:
             pts=[tm['%s|%d'%(name,s)] for s in SS16 if '%s|%d'%(name,s) in tm]
             if pts: P('  %-13s %6.1f FPS'%(name,sum(p[0] for p in pts)/max(sum(p[1] for p in pts),1e-9)))
     pk=st.get('preskok',{})
     if pk:
-        P('\n=== E) ZAKRPA KALMANOVA FILTRA (unfreeze u BoxMOT 10.0.83): koliko je puta preskocen ponovni izracun nakon prekida, zbroj preko snimaka')
+        P('\n=== E) KALMAN FILTER PATCH (unfreeze in BoxMOT 10.0.83): how many times the recomputation after a gap was skipped, sum over sequences')
         for name,_ in CAND:
             v=[pk['%s|%d'%(name,s)] for s in SS16 if '%s|%d'%(name,s) in pk]
-            if v: P('  %-13s IndexError %d, ValueError %d  (zabiljezeno za %d od 16 snimaka)'%(name,sum(x['IndexError'] for x in v),sum(x['ValueError'] for x in v),len(v)))
+            if v: P('  %-13s IndexError %d, ValueError %d  (recorded for %d of 16 sequences)'%(name,sum(x['IndexError'] for x in v),sum(x['ValueError'] for x in v),len(v)))
     if st.get('postavke'):
-        P('\n=== D) POSTAVKE PREDANE KONSTRUKTORIMA (ostalo = zadano u biblioteci)')
+        P('\n=== D) SETTINGS PASSED TO THE CONSTRUCTORS (the rest = library default)')
         for k,v in st['postavke'].items(): P('  %-13s %s'%(k,', '.join('%s=%s'%(a,b) for a,b in v.items())))
     json.dump(OUT,open(O+'/p56_sve.json','w'),indent=1,default=float)
-    open(S+'/p56_iste_detekcije.txt','w').write('\n'.join(L)+'\n'); print('\nrezultat: %s/p56_iste_detekcije.txt'%S)
+    open(S+'/p56_iste_detekcije.txt','w').write('\n'.join(L)+'\n'); print('\nresult: %s/p56_iste_detekcije.txt'%S)
 def provjera():
-    """brza provjera prije dugog pokretanja: koji trackeri postoje, sto im se predaje i rade li na umjetnom frejmu"""
+    """quick check before the long run: which trackers exist, what is passed to them and whether they run on a synthetic frame"""
     import cv2, torch   # noqa: F401
     boxmot=boxmot_setup(); dev=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    print('BoxMOT verzija: %s; uredaj: %s; model izgleda %s: %s'%(getattr(boxmot,'__version__','?'),dev,REID,'POSTOJI' if os.path.exists(REID) else '!! NEMA'),flush=True)
+    print('BoxMOT version: %s; device: %s; appearance model %s: %s'%(getattr(boxmot,'__version__','?'),dev,REID,'EXISTS' if os.path.exists(REID) else '!! MISSING'),flush=True)
     img=np.zeros((720,1280,3),np.uint8); img[90:160,90:210]=200; img[290:390,390:530]=120
     d0=np.array([[100,100,200,150,0.9,0],[400,300,520,380,0.8,1]],float)
     for name,cands in CAND:
         c=next((getattr(boxmot,x) for x in cands if hasattr(boxmot,x)),None)
-        if c is None: print('  %-13s nema u ovoj verziji'%name,flush=True); continue
+        if c is None: print('  %-13s not in this version'%name,flush=True); continue
         try:
             kw,used=kwargs_for(c,dev,25.0); t=c(**kw); o=None
             for i in range(5): o=t.update(d0+np.array([2*i,0,2*i,0,0,0]),img)
-            print('  %-13s OK   predano: %s | izlaz zadnjeg frejma: %s'%(name,', '.join('%s=%s'%(k,v) for k,v in used.items()) or 'nista (sve zadano)',
+            print('  %-13s OK   passed: %s | output of the last frame: %s'%(name,', '.join('%s=%s'%(k,v) for k,v in used.items()) or 'nothing (all default)',
                   None if o is None else np.asarray(o).shape),flush=True)
         except Exception as e:
-            print('  %-13s GRESKA %s: %s'%(name,type(e).__name__,str(e)[:300]),flush=True)
+            print('  %-13s ERROR %s: %s'%(name,type(e).__name__,str(e)[:300]),flush=True)
 def dijagnoza(name,s):
-    """pokrene jedan tracker na jednoj snimci i ispise cijeli traceback na prvoj gresci (za popravak)"""
+    """runs one tracker on one sequence and prints the full traceback at the first error (for fixing)"""
     import cv2, torch, traceback
     boxmot=boxmot_setup(); dev=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     cands=dict(CAND)[name]; c=next((getattr(boxmot,x) for x in cands if hasattr(boxmot,x)),None)
@@ -293,12 +293,12 @@ def dijagnoza(name,s):
     byf={int(fd['frame']):fd.get('detections') or [] for fd in json.load(open(DET%s))}; f=0
     while True:
         ok,img=cap.read()
-        if not ok: print('prosao cijelu snimku bez greske (%d frejmova)'%f); return
+        if not ok: print('went through the whole sequence without an error (%d frames)'%f); return
         f+=1; dl=byf.get(f,[])
         d=np.array([[x['box'][0],x['box'][1],x['box'][0]+x['box'][2],x['box'][1]+x['box'][3],x.get('conf',1.0),x.get('class',0)] for x in dl],float) if dl else np.zeros((0,6))
         try: t.update(d,img)
         except Exception:
-            print('GRESKA na frejmu %d, detekcija %d, oblik %s:'%(f,len(d),d.shape)); print(np.round(d,2)); print(traceback.format_exc()); return
+            print('ERROR at frame %d, detection %d, shape %s:'%(f,len(d),d.shape)); print(np.round(d,2)); print(traceback.format_exc()); return
 if __name__=='__main__':
     if '--dijagnoza' in sys.argv: dijagnoza('Hybrid-SORT',2)
     elif '--provjera' in sys.argv: provjera()

@@ -128,18 +128,18 @@ osd.link(fakesink)
 
 osd_pad = osd.get_static_pad("sink")
 osd_pad.add_probe(Gst.PadProbeType.BUFFER, probe_fn, 0)
-print("Snimam tracking log...")
+print("Writing tracking log...")
 
 loop = GLib.MainLoop()
 
 def bus_call(bus, msg, loop):
     if msg.type == Gst.MessageType.EOS:
-        print("GOTOVO! Snimam JSON...")
+        print("DONE! Writing JSON...")
         with open(OUTPUT_JSON, 'w') as f:
             json.dump(tracking_log, f)
         print("Frames: " + str(frame_count))
-        print("ID switchevi: " + str(original_switches))
-        print("JSON spremljen: " + OUTPUT_JSON)
+        print("ID switches: " + str(original_switches))
+        print("JSON saved: " + OUTPUT_JSON)
         loop.quit()
     elif msg.type == Gst.MessageType.ERROR:
         err, _ = msg.parse_error()
@@ -151,7 +151,7 @@ bus = pipeline.get_bus()
 bus.add_signal_watch()
 bus.connect("message", bus_call, loop)
 pipeline.set_state(Gst.State.PLAYING)
-print("Pipeline pokrenut!")
+print("Pipeline started!")
 
 try:
     loop.run()

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""p60e -- BRZA PROVJERA DETEKTORA NA FVESSELU (ultralytics, bez DeepStreama i bez trackera).
+"""p60e -- QUICK CHECK OF THE DETECTORS ON FVESSEL (Ultralytics, without DeepStream and without a tracker).
 
-U p60_dijagnoza dio C je dao 0 detekcija na svim ulazima, iako isti model u DeepStreamu nalazi brodove -> sumnja na
-FP16 (half) u PyTorchu na ovoj grafickoj. Ovdje:
- 1) tri frejma u detalje: SSMOT YOLO11m (best.pt) i opci COCO YOLO11m (samo klasa 'boat'), ulaz 640 / 1280, FP32 i FP16
- 2) odziv na svakoj 10. sekundi s GT-om (sve snimke), FP32: SSMOT 640 / 1280 i COCO 640 / 1280
+In p60_dijagnoza, part C gave 0 detections on all inputs although the same model finds vessels in DeepStream -> suspected
+FP16 (half) in PyTorch on this GPU. Here:
+ 1) three frames in detail: SSMOT YOLO11m (best.pt) and the general COCO YOLO11m (class 'boat' only), input 640 / 1280, FP32 and FP16
+ 2) recall on every 10th second with GT (all clips), FP32: SSMOT 640 / 1280 and COCO 640 / 1280
 
-COCO yolo11m.pt se jednom skine (~40 MB) u /workspace. Nista se ne mijenja u postojecim datotekama.
-Pokretanje:  python3 /workspace/p60_detektor.py /workspace/Clip-10_h264
-Izlaz:       /workspace/scpilot/p60_detektor.txt   (dio 1 je gotov za ~1-2 min, dio 2 za ~5-10 min)
+The COCO yolo11m.pt is downloaded once (~40 MB) to /workspace. No existing file is changed.
+Run:     python3 /workspace/p60_detektor.py /workspace/Clip-10_h264
+Output:  /workspace/scpilot/p60_detektor.txt   (part 1 takes ~1-2 min, part 2 ~5-10 min)
 """
 import os, sys, glob, time
 import numpy as np
@@ -48,27 +48,27 @@ SN = []
 for d in sorted(glob.glob(os.path.join(FV, 'clip-*'))):
     v = glob.glob(d + '/*.mp4'); g = glob.glob(d + '/gt/*_gt_tracking.txt')
     if len(v) == 1 and len(g) == 1: SN.append((os.path.basename(d), v[0], ucitaj_gt(g[0])))
-if not SN: sys.exit('u %s nema snimki clip-XX s videom i gt/*_gt_tracking.txt' % FV)
+if not SN: sys.exit('no clip-XX folders with a video and gt/*_gt_tracking.txt in %s' % FV)
 
 try:
     import torch, ultralytics
     from ultralytics import YOLO
 except Exception as ex:
-    sys.exit('nema torch/ultralytics: %s' % ex)
-gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NEMA CUDA-e (radi na CPU-u)'
-P('p60e -- torch %s, ultralytics %s, graficka: %s' % (torch.__version__, ultralytics.__version__, gpu))
+    sys.exit('torch/ultralytics missing: %s' % ex)
+gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NO CUDA (running on the CPU)'
+P('p60e -- torch %s, ultralytics %s, GPU: %s' % (torch.__version__, ultralytics.__version__, gpu))
 os.chdir(W)
 MOD = {}
 try:
-    MOD['SSMOT'] = YOLO(PT); P('SSMOT model: %s, klase %s' % (PT, list(MOD['SSMOT'].names.values())))
+    MOD['SSMOT'] = YOLO(PT); P('SSMOT model: %s, classes %s' % (PT, list(MOD['SSMOT'].names.values())))
 except Exception as ex:
-    P('SSMOT model nije ucitan: %s' % str(ex)[:150])
+    P('SSMOT model not loaded: %s' % str(ex)[:150])
 try:
     MOD['COCO'] = YOLO('yolo11m.pt')
     BOAT = [k for k, n in MOD['COCO'].names.items() if n == 'boat']
-    P('COCO model: yolo11m.pt, koristi se samo klasa boat %s' % BOAT)
+    P('COCO model: yolo11m.pt, only the class boat is used %s' % BOAT)
 except Exception as ex:
-    P('COCO model nije ucitan (nema mreze?): %s' % str(ex)[:150])
+    P('COCO model not loaded (no network?): %s' % str(ex)[:150])
 
 def detekcije(ime, img, z, half):
     m = MOD[ime]; kw = dict(imgsz=z, conf=CONF, iou=NMS, verbose=False, half=half)
@@ -77,29 +77,29 @@ def detekcije(ime, img, z, half):
     xyxy = r.boxes.xyxy.cpu().numpy().tolist(); cls = r.boxes.cls.cpu().numpy().tolist(); cf = r.boxes.conf.cpu().numpy().tolist()
     return [([x1, y1, x2 - x1, y2 - y1], m.names[int(k)], float(c)) for (x1, y1, x2, y2), k, c in zip(xyxy, cls, cf)], ms
 
-# ============================================================================= 1. tri frejma u detalje
-P(); P('=== 1. TRI FREJMA U DETALJE (prag %.2f; za svaki GT: najbolji IoU, pouzdanost i klasa tog okvira)' % CONF)
+# ============================================================================= 1. three frames in detail
+P(); P('=== 1. THREE FRAMES IN DETAIL (threshold %.2f; for each GT box: best IoU, confidence and class of that box)' % CONF)
 CFG1 = [(m, z, h) for m in ('SSMOT', 'COCO') if m in MOD for z in (640, 1280) for h in (False, True)]
 for ime, v, G in SN:
     if ime not in ('clip-01', 'clip-05', 'clip-08'): continue
     sek = sorted(G); s = 2 if ime == 'clip-01' and 2 in G else sek[len(sek) // 2]
     cap = cv2.VideoCapture(v); fps = cap.get(cv2.CAP_PROP_FPS) or 25.0; f = int(round(s * fps)) + K_GLOB
     cap.set(cv2.CAP_PROP_POS_FRAMES, f); ok, img = cap.read(); cap.release()
-    if not ok: P('  %s frejm %d nije procitan' % (ime, f)); continue
+    if not ok: P('  %s frame %d could not be read' % (ime, f)); continue
     Wk, Hk = img.shape[1], img.shape[0]
-    P('  %s sekunda %d (frejm %d): %s' % (ime, s, f, '  '.join('GT%d [%d,%d,%d,%d]' % ((g,) + tuple(int(q) for q in b)) for g, b in G[s])))
+    P('  %s second %d (frame %d): %s' % (ime, s, f, '  '.join('GT%d [%d,%d,%d,%d]' % ((g,) + tuple(int(q) for q in b)) for g, b in G[s])))
     for (m, z, h) in CFG1:
         D, ms = detekcije(m, img, z, h)
         opis = []
         for g, b in G[s]:
             best = max(D, key=lambda d: iou(b, d[0])) if D else None
-            opis.append('GT%d %s' % (g, ('IoU %.2f (%.2f %s)' % (iou(b, best[0]), best[2], best[1][:12])) if best and iou(b, best[0]) > 0 else 'nista'))
+            opis.append('GT%d %s' % (g, ('IoU %.2f (%.2f %s)' % (iou(b, best[0]), best[2], best[1][:12])) if best and iou(b, best[0]) > 0 else 'nothing'))
         ndiv = sum(1 for d in D if d[0][2] * d[0][3] > 0.10 * Wk * Hk)
-        P('    %-5s %4d %s  okvira %2d (divovskih %d)  %4.0f ms | %s' % (m, z, 'FP16' if h else 'FP32', len(D), ndiv, ms, ' | '.join(opis)))
+        P('    %-5s %4d %s  boxes %2d (giant %d)  %4.0f ms | %s' % (m, z, 'FP16' if h else 'FP32', len(D), ndiv, ms, ' | '.join(opis)))
 
-# ============================================================================= 2. odziv na svakoj 10. sekundi
+# ============================================================================= 2. recall on every 10th second
 CFG2 = [(m, z) for m in ('SSMOT', 'COCO') if m in MOD for z in (640, 1280)]
-P(); P('=== 2. ODZIV NA SVAKOJ %d. SEKUNDI S GT-om (sve snimke, FP32, prag %.2f, IoU >= 0,5 jedan-na-jedan)' % (KORAK, CONF))
+P(); P('=== 2. RECALL ON EVERY %d. SECOND WITH GT (all clips, FP32, threshold %.2f, IoU >= 0.5 one-to-one)' % (KORAK, CONF))
 hit = {c: [0] * len(BINS) for c in CFG2}; ndet = {c: 0 for c in CFG2}; ntp = {c: 0 for c in CFG2}; ndiv = {c: 0 for c in CFG2}
 vr = {c: 0.0 for c in CFG2}; ngt = [0] * len(BINS); nfrm = 0; po = {c: [] for c in CFG2}; t0 = time.time()
 for ime, v, G in SN:
@@ -131,15 +131,15 @@ for ime, v, G in SN:
         f += 1
     cap.release()
     for c in CFG2: po[c].append((ime, lok[c][0], lok[c][1]))
-    print('  %s gotovo (%.0f s)' % (ime, time.time() - t0), flush=True)
+    print('  %s done (%.0f s)' % (ime, time.time() - t0), flush=True)
 N = sum(ngt)
-P('  frejmova %d, GT okvira %d (po visini: %s)' % (nfrm, N, ', '.join('%s %d' % (t, n) for t, n in zip(BIN_TXT, ngt))))
-P('  %-12s %s   %8s  %10s  %15s  %8s' % ('detektor', '  '.join('%7s' % t for t in BIN_TXT), 'ukupno', 'preciznost', 'divovskih/frejm', 'ms/frejm'))
+P('  frames %d, GT boxes %d (by height: %s)' % (nfrm, N, ', '.join('%s %d' % (t, n) for t, n in zip(BIN_TXT, ngt))))
+P('  %-12s %s   %8s  %10s  %15s  %8s' % ('detector', '  '.join('%7s' % t for t in BIN_TXT), 'total', 'precision', 'giant/frame', 'ms/frame'))
 for c in CFG2:
     P('  %-12s %s   %8s  %10s  %15.2f  %8.0f' % ('%s %d' % c, '  '.join('%7s' % pc(h, m) for h, m in zip(hit[c], ngt)), pc(ntp[c], N),
       pc(ntp[c], ndet[c]), ndiv[c] / max(1, nfrm), vr[c] / max(1, nfrm)))
-P('  po snimci (odziv, redom %s):' % ', '.join('%s %d' % c for c in CFG2))
+P('  per clip (recall, in order %s):' % ', '.join('%s %d' % c for c in CFG2))
 for j, (ime, _, _) in enumerate(SN):
     P('    %s  ' % ime + '  '.join('%7s' % pc(po[c][j][1], po[c][j][2]) for c in CFG2))
-P('  (usporedba: DeepStream + tracker vlastiti pokriva 8,2 % GT-a u prozoru +-1-2 s, 4,2 % na tocnom frejmu)')
-P(); P('Gotovo. %s' % OUT)
+P('  (comparison: DeepStream + own tracker covers 8.2 % GT boxes in a window of +-1-2 s, 4.2 % at the exact frame)')
+P(); P('Done. %s' % OUT)

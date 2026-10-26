@@ -1,21 +1,24 @@
 """
-Vremensko izgladivanje ID-eva izmedu nvtrackera i OSD-a.
+Temporal smoothing of IDs between nvtracker and the OSD.
 
-Titranje: isti fizicki trag naizmjenicno dobiva dva ID-a iz frejma u frejm.
-Korekcija radi u dva koraka:
-  1. Prostorno-vremenski se gradi lanac detekcija (uzastopni frejmovi,
-     visok IoU) - to je jedan fizicki objekt bez obzira na dodijeljeni ID.
-  2. Svakom lancu se dodijeli jedan ID: onaj koji se najcesce pojavljuje.
+Flicker: the same physical track alternately receives two IDs from frame to frame.
+The correction works in two steps:
+  1. A chain of detections is built in space and time (consecutive frames,
+     high IoU); it is one physical object regardless of the assigned ID.
+  2. Each chain is given one ID: the one that occurs most often.
 
-Ne koristi ground truth ni na koji nacin - radi samo nad izlazom trackera,
-pa je primjenjiv u stvarnom vremenu.
+It does not use the ground truth in any way; it works only on the tracker output,
+so it can be applied in real time.
+
+The experiments of the article use only the loaders load_gt, load_tr, pick and iou of this file;
+the smoothing itself is not applied to any result of the article.
 """
 import json, numpy as np
 from scipy.optimize import linear_sum_assignment
 from collections import defaultdict, Counter
 
-LINK_IOU = 0.5   # najmanje preklapanje da se detekcije iz susjednih frejmova povezu
-MAXGAP   = 3     # koliko frejmova objekt smije nedostajati a da se lanac ne prekine
+LINK_IOU = 0.5   # minimum overlap for linking detections in consecutive frames
+MAXGAP   = 3     # how many frames an object may be missing before the chain is broken
 
 def load_gt(p,s):
     g={}
@@ -50,10 +53,10 @@ def pick(gp,tr):
 
 def smooth(tr):
     frames=sorted(tr)
-    # svaka detekcija je cvor (frejm, indeks)
-    chain={}          # (f,i) -> id lanca
+    # every detection is a node (frame, index)
+    chain={}          # (f,i) -> chain id
     nxt=0
-    active=[]         # lista (zadnji_frejm, okvir, lanac)
+    active=[]         # list of (last_frame, box, chain)
     for f in frames:
         dets=tr[f]
         free=list(range(len(dets)))
@@ -77,7 +80,7 @@ def smooth(tr):
         for d in free:
             chain[(f,d)]=nxt; active.append((f,dets[d]['box'],nxt)); nxt+=1
 
-    # vecinski ID po lancu
+    # majority ID per chain
     votes=defaultdict(Counter)
     for f in frames:
         for i,d in enumerate(tr[f]):
@@ -155,17 +158,17 @@ for v in sorted(CFG):
         b=evaluate(gt,tr)
         sm,ch,nc=smooth(tr)
         a=evaluate(gt,sm)
-        print('  %-11s prije  '%name,b)
-        print('  %-11s poslije'%'',a,'  (%d ispravljenih detekcija, %d nestabilnih lanaca)'%(ch,nc))
+        print('  %-11s before '%name,b)
+        print('  %-11s after  '%'',a,'  (%d detections corrected, %d unstable chains)'%(ch,nc))
         for k in ['MOTA','IDF1','HOTA','IDSW']:
             agg[name]['b'+k].append(b[k]); agg[name]['a'+k].append(a[k])
 
 print()
 print('='*62)
-print('PROSJEK preko 5 sekvenci')
+print('MEAN over 5 sequences')
 for name in ['NvSORT','NvDeepSORT']:
     print(' ',name)
     for k in ['MOTA','IDF1','HOTA','IDSW']:
         b=np.mean(agg[name]['b'+k]); a=np.mean(agg[name]['a'+k])
         f='%.3f' if k!='IDSW' else '%.1f'
-        print(('    %-5s  prije '+f+'   poslije '+f+'   razlika '+f)%(k,b,a,a-b))
+        print(('    %-5s  before'+f+'   after   '+f+'   change  '+f)%(k,b,a,a-b))

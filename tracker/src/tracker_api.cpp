@@ -1,7 +1,7 @@
 // ============================================================
-//  mytracker  --  korak 2: struktura traga i upravljanje
-//  IoU + slicnost velicine, Hungarian uparivanje.
-//  Jos bez Kalmana -- predikcija je zadnji vidjeni okvir.
+//  mytracker  --  development step 2: track structure and management
+//  IoU + size similarity, Hungarian matching.
+//  (At that step without a Kalman filter; kalman.h and reid.h were added in later steps.)
 // ============================================================
 #include <nvdstracker.h>
 #include "tracker.h"
@@ -55,9 +55,9 @@ NvMOTStatus NvMOT_Init(NvMOTConfig *cfg, NvMOTContextHandle *ph,
         ctx->cropBuf.resize((size_t)MAXB * 3 * 256 * 128);
         ctx->featBuf.resize((size_t)MAXB * ctx->reid.featSize());
         ctx->reidOn = true;
-        printf("[mytracker] Re-ID ukljucen\n");
+        printf("[mytracker] Re-ID enabled\n");
     } else {
-        printf("[mytracker] Re-ID iskljucen -- radim bez appearance clana\n");
+        printf("[mytracker] Re-ID disabled -- running without the appearance term\n");
     }
     if (resp) {
         memset(resp, 0, sizeof(NvMOTConfigResponse));
@@ -75,7 +75,7 @@ void NvMOT_DeInit(NvMOTContextHandle h)
     ctx->crops.deinit();
     uint64_t total = 0;
     for (auto &kv : ctx->trk) total += kv.second.tracks.size();
-    printf("[mytracker] DeInit  frejmova: %u  zivih tragova: %lu\n",
+    printf("[mytracker] DeInit  frames: %u  live tracks: %lu\n",
            ctx->frames, (unsigned long)total);
     fflush(stdout);
     delete ctx;
@@ -103,7 +103,7 @@ NvMOTStatus NvMOT_Process(NvMOTContextHandle h,
 
         Tracker &T = ctx->trk[frame->streamID];
 
-        // ulaz -> Detection
+        // input -> Detection
         std::vector<Detection> dets;
         dets.reserve(frame->objectsIn.numFilled);
         for (uint32_t j = 0; j < frame->objectsIn.numFilled; j++) {
@@ -118,7 +118,7 @@ NvMOTStatus NvMOT_Process(NvMOTContextHandle h,
             dets.push_back(d);
         }
 
-        // Re-ID znacajke za sve detekcije ovog frejma
+        // Re-ID features for all detections of this frame
         if (T.P.useReid && ctx->reidOn && !dets.empty() && frame->numBuffers > 0 && frame->bufferList) {
             std::vector<CropRect> rects;
             rects.reserve(dets.size());
@@ -138,11 +138,11 @@ NvMOTStatus NvMOT_Process(NvMOTContextHandle h,
 
         std::vector<std::pair<uint64_t,bool>> ids = T.update(dets);
 
-        // izlaz
+        // output
         uint32_t k = 0;
         for (size_t j = 0; j < dets.size() && k < outList->numAllocated; j++)
         {
-            if (!ids[j].second) continue;      // trag jos u probaciji
+            if (!ids[j].second) continue;      // track still in probation
             NvMOTTrackedObj *out = &outList->list[k];
             memset(out, 0, sizeof(NvMOTTrackedObj));
             out->classId            = dets[j].classId;

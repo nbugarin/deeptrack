@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""p63 -- SMD-Plus VIS_Onshore -> skup za ocjenu PRACENJA (bez rucnog anotiranja).
+"""p63 -- SMD-Plus VIS_Onshore -> set for TRACKING evaluation (without manual annotation).
 
-SMD-Plus ima okvir i klasu za SVAKI frejm, ali nema ID traga (p62). ID se izvodi automatski:
-povezivanje okvira iz frejma u frejm po preklapanju s predvidjenim polozajem (stalna brzina; madjarski algoritam,
-IoU >= 0,4; premoscivanje rupa do 1 s uz IoU >= 0,3). p62 je pokazao da je 98,9 % parova susjednih frejmova jednoznacno, pa je greska izvodjenja mala;
-dvosmislena mjesta se broje i ispisuju, a za 3 snimke se rade kontrolni videi da se ID-ovi provjere okom.
+SMD-Plus has a box and a class for EVERY frame, but no track ID (p62). The ID is derived automatically:
+linking boxes from frame to frame by overlap with the predicted position (constant velocity; Hungarian algorithm,
+IoU >= 0.4; bridging gaps of up to 1 s with IoU >= 0.3). p62 showed that 98.9 % of pairs of neighbouring frames are unambiguous, so the derivation error is small;
+ambiguous places are counted and printed, and for 3 sequences check videos are made so that the IDs can be checked by eye.
 
-Klase: ocjenjuju se plovila (Ferry, Vessel/ship, Boat, Kayak, Sail boat); Buoy i Other su "ometaci" (kao u MOT17):
-ni pogodak ni greska -- okvir trackera na njima se ne broji kao lazni.
+Classes: vessels are evaluated (Ferry, Vessel/ship, Boat, Kayak, Sail boat); Buoy and Other are "distractors" (as in MOT17):
+neither a hit nor an error -- a tracker box on them is not counted as false.
 
-Dijelovi:
- A) izvodjenje ID-ova + statistika po snimci  ->  /workspace/SMD_mot/<snimka>/gt/gt.txt
-    (MOT: frejm, id, x, y, w, h, 1, klasa_SMD, 1; frejm 1 = prvi frejm videa)
- B) kontrolni videi s ID-ovima (960x540) za 3 snimke  ->  /workspace/SMD_mot/kontrola/*.mp4
- C) prekodiranje videa u H.264 mp4 (kao za FVessel)  ->  /workspace/SMD_mot/<snimka>/<snimka>.mp4
- D) brza provjera detektora (ako je GPU slobodan): SSMOT 640/1280, COCO boat 640/1280 na svakom 30. frejmu
+Parts:
+ A) derivation of the IDs + statistics per sequence  ->  /workspace/SMD_mot/<sequence>/gt/gt.txt
+    (MOT: frame, id, x, y, w, h, 1, SMD_class, 1; frame 1 = first frame of the video)
+ B) check videos with IDs (960x540) for 3 sequences  ->  /workspace/SMD_mot/kontrola/*.mp4
+ C) re-encoding of the videos to H.264 mp4 (as for FVessel)  ->  /workspace/SMD_mot/<sequence>/<sequence>.mp4
+ D) quick detector check (if the GPU is free): SSMOT 640/1280, COCO boat 640/1280 on every 30th frame
 
-Pokretanje:   python3 /workspace/p63_smd_gt.py /workspace/SMD_Plus/VIS_Onshore
-Samo D kasnije: python3 /workspace/p63_smd_gt.py /workspace/SMD_Plus/VIS_Onshore --samo-detektor
-Izlaz:        /workspace/scpilot/p63_smd_gt.txt
+Run:            python3 /workspace/p63_smd_gt.py /workspace/SMD_Plus/VIS_Onshore
+Only D, later:  python3 /workspace/p63_smd_gt.py /workspace/SMD_Plus/VIS_Onshore --samo-detektor
+Output:         /workspace/scpilot/p63_smd_gt.txt
 """
 import os, sys, glob, re, json, time, subprocess, collections
 import numpy as np
@@ -44,14 +44,14 @@ try:
 except ImportError:
     cv2 = None
 
-# ----------------------------------------------------------------------------- ucitavanje
-if not os.path.isdir(ROOT): sys.exit('nema mape %s' % ROOT)
+# ----------------------------------------------------------------------------- loading
+if not os.path.isdir(ROOT): sys.exit('no folder %s' % ROOT)
 vid = sorted(p for e in ('avi', 'mp4', 'mov', 'AVI', 'MP4', 'MOV') for p in glob.glob(ROOT + '/**/*.' + e, recursive=True))
 mats = sorted(glob.glob(ROOT + '/**/*.mat', recursive=True))
 def kljuc(p): return re.sub(r'[_-]?ObjectGT$', '', os.path.splitext(os.path.basename(p))[0], flags=re.I)
 VK = {kljuc(v): v for v in vid}
 SN = [(kljuc(m), m, VK[kljuc(m)]) for m in mats if kljuc(m) in VK]
-if not SN: sys.exit('nema uparenih .mat + video u %s' % ROOT)
+if not SN: sys.exit('no matched .mat + video in %s' % ROOT)
 
 def ucitaj(m):
     d = sio.loadmat(m, squeeze_me=True, struct_as_record=False)
@@ -80,10 +80,10 @@ def ucitaj_gt_mot(p):
 
 KLASE = {}
 if not SAMO_D:
-    # ========================================================================= A. ID-ovi
-    P('p63 SMD-Plus VIS_Onshore -> MOT, %d snimki; povezivanje IoU >= %.1f, premoscivanje do %d frejmova uz IoU >= %.1f' % (len(SN), IOU_LINK, GAP, IOU_GAP))
-    P(); P('=== A. IZVEDENI ID-ovi PO SNIMCI')
-    P('  %-18s %6s %7s %5s %8s %7s %6s %7s %6s' % ('snimka', 'frejm', 'okvira', 'ID', 'trag fr', 'dvosm.', 'premo.', 'kl.prom', 'ometac'))
+    # ========================================================================= A. IDs
+    P('p63 SMD-Plus VIS_Onshore -> MOT, %d sequences; linking IoU >= %.1f, bridging up to %d frames with IoU >= %.1f' % (len(SN), IOU_LINK, GAP, IOU_GAP))
+    P(); P('=== A. DERIVED IDs PER SEQUENCE')
+    P('  %-18s %6s %7s %5s %8s %7s %6s %7s %6s' % ('sequence', 'frames', 'boxes', 'ID', 'track fr', 'ambig.', 'bridg.', 'cls.chg', 'distr.'))
     UK = collections.Counter(); DV = []
     for ime, m, v in SN:
         F = ucitaj(m)
@@ -91,13 +91,13 @@ if not SAMO_D:
             for c, t in zip(oc, ot):
                 if c is not None: KLASE[int(c)] = str(t)
         akt = {}; nid = 0; rows = []; dv = 0; prem = 0; kp = 0; duz = collections.Counter()
-        def pred(k, t):                                   # stalna brzina: zadnji okvir + v * proteklo vrijeme
+        def pred(k, t):                                   # constant velocity: last box + v * elapsed time
             lb, lf, lc, vv = akt[k]
             return [lb[0] + vv[0] * (t - lf), lb[1] + vv[1] * (t - lf), lb[2], lb[3]]
         for t, (b, oc, ot, mt) in enumerate(F):
             kand = [k for k, (lb, lf, lc, vv) in akt.items() if t - lf <= GAP]
             M = np.array([[iou(pred(k, t), b[j]) for j in range(len(b))] for k in kand]) if kand and len(b) else np.zeros((len(kand), len(b)))
-            for j in range(len(b)):                       # dvosmisleno: dva traga dobro preklapaju isti okvir
+            for j in range(len(b)):                       # ambiguous: two tracks overlap the same box well
                 if M.shape[0] and (M[:, j] >= 0.3).sum() >= 2: dv += 1; DV.append((ime, t + 1))
             dodj = {}
             if M.size:
@@ -126,19 +126,19 @@ if not SAMO_D:
                 f.write('%d,%d,%.2f,%.2f,%.2f,%.2f,1,%d,1\n' % (fr, k, bb[0], bb[1], bb[2], bb[3], c))
         P('  %-18s %6d %7d %5d %8.0f %7d %6d %7d %6d' % (ime[:18], len(F), len(rows), nid, np.mean(list(duz.values())) if duz else 0, dv, prem, kp, ometac))
         UK.update(frm=len(F), okv=len(rows), id=nid, dv=dv, prem=prem, kp=kp, om=ometac)
-    P('  UKUPNO: %d frejmova (%.1f min uz 30 fps), %d okvira (ometaca %d), %d izvedenih ID-ova; dvosmislenih okvira %d (%.2f %%), premoscenih rupa %d, promjena klase unutar traga %d' % (
+    P('  TOTAL: %d frames (%.1f min at 30 fps), %d boxes (distractors %d), %d derived IDs; ambiguous boxes %d (%.2f %%), bridged gaps %d, class changes within a track %d' % (
         UK['frm'], UK['frm'] / 30 / 60, UK['okv'], UK['om'], UK['id'], UK['dv'], 100.0 * UK['dv'] / max(1, UK['okv']), UK['prem'], UK['kp']))
-    P('  klase SMD-Plus: ' + ', '.join('%d = %s%s' % (k, v, '' if v.lower() in PLOVILA else ' (OMETAC)') for k, v in sorted(KLASE.items())))
+    P('  SMD-Plus classes: ' + ', '.join('%d = %s%s' % (k, v, '' if v.lower() in PLOVILA else ' (DISTRACTOR)') for k, v in sorted(KLASE.items())))
     json.dump({str(k): v for k, v in KLASE.items()}, open(OD + '/klase.json', 'w'))
     if DV:
         po = collections.Counter(i for i, _ in DV)
-        P('  dvosmislena mjesta po snimci (najvise): ' + ', '.join('%s %d' % kv for kv in po.most_common(6)))
-        P('  primjeri (snimka, frejm): ' + ', '.join('%s %d' % x for x in DV[:: max(1, len(DV) // 8)][:8]))
+        P('  ambiguous places per sequence (most): ' + ', '.join('%s %d' % kv for kv in po.most_common(6)))
+        P('  examples (sequence, frame): ' + ', '.join('%s %d' % x for x in DV[:: max(1, len(DV) // 8)][:8]))
     spremi()
 
-    # ========================================================================= B. kontrolni videi
-    P(); P('=== B. KONTROLNI VIDEI S IZVEDENIM ID-ovima (provjeri okom: drzi li isti brod isti broj)')
-    if cv2 is None: P('  preskoceno: nema cv2')
+    # ========================================================================= B. check videos
+    P(); P('=== B. CHECK VIDEOS WITH DERIVED IDs (check by eye: does the same vessel keep the same number)')
+    if cv2 is None: P('  skipped: no cv2')
     else:
         os.makedirs(OD + '/kontrola', exist_ok=True)
         boje = [(int(h * 47 % 255), int(h * 91 % 255), int(h * 151 % 255)) for h in range(1, 400)]
@@ -158,13 +158,13 @@ if not SAMO_D:
                     cv2.rectangle(img, (x, y), (x + w, y + h), (128, 128, 128) if om else col, 3)
                     cv2.putText(img, ('o%d' if om else '%d') % k, (x, max(30, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 5, cv2.LINE_AA)
                     cv2.putText(img, ('o%d' if om else '%d') % k, (x, max(30, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (128, 128, 128) if om else col, 2, cv2.LINE_AA)
-                cv2.putText(img, '%s  frejm %d  (broj = izvedeni ID; o = ometac)' % (ime, t), (20, 1060), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (255, 255, 255), 3, cv2.LINE_AA)
+                cv2.putText(img, '%s  frame %d  (number = derived ID; o = distractor)' % (ime, t), (20, 1060), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (255, 255, 255), 3, cv2.LINE_AA)
                 vw.write(cv2.resize(img, (960, 540)))
-            cap.release(); vw.release(); P('  spremljeno %s (%d frejmova)' % (p, t))
+            cap.release(); vw.release(); P('  saved %s (%d frames)' % (p, t))
     spremi()
 
-    # ========================================================================= C. prekodiranje
-    P(); P('=== C. PREKODIRANJE VIDEA U H.264 (libx264, crf 18, isti broj frejmova)')
+    # ========================================================================= C. re-encoding
+    P(); P('=== C. RE-ENCODING THE VIDEOS TO H.264 (libx264, crf 18, same number of frames)')
     lose = []
     for ime, m, v in SN:
         dst = OD + '/%s/%s.mp4' % (ime, ime)
@@ -175,20 +175,20 @@ if not SAMO_D:
             if r.returncode != 0: lose.append(ime); P('  !! %s: %s' % (ime, r.stderr[-200:])); continue
         if cv2 is not None:
             c = cv2.VideoCapture(dst); n = int(c.get(cv2.CAP_PROP_FRAME_COUNT)); c.release()
-            if n < nGT: lose.append(ime); P('  !! %s: video %d frejmova < GT %d' % (ime, n, nGT))
-    P('  prekodirano %d/%d%s' % (len(SN) - len(lose), len(SN), ('; NEUSPJELO: ' + ', '.join(lose)) if lose else ''))
+            if n < nGT: lose.append(ime); P('  !! %s: video %d frames < GT %d' % (ime, n, nGT))
+    P('  re-encoded %d/%d%s' % (len(SN) - len(lose), len(SN), ('; FAILED: ' + ', '.join(lose)) if lose else ''))
     spremi()
 else:
     KLASE = {int(k): v for k, v in json.load(open(OD + '/klase.json')).items()}
 
-# ============================================================================= D. detektor
-P(); P('=== D. BRZA PROVJERA DETEKTORA (svaki 30. frejm, prag 0,25, IoU >= 0,5; okvir na ometacu se ne broji)')
+# ============================================================================= D. detector
+P(); P('=== D. QUICK DETECTOR CHECK (every 30th frame, threshold 0.25, IoU >= 0.5; a box on a distractor is not counted)')
 used = 0
 try: used = int(subprocess.run(['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'], capture_output=True, text=True).stdout.split()[0])
 except Exception: pass
 mod = {}
 if used > 1500:
-    P('  preskoceno: GPU je zauzet (%d MiB) -- kasnije pokreni s --samo-detektor' % used)
+    P('  skipped: GPU is busy (%d MiB) -- run later with --samo-detektor' % used)
 else:
     try:
         from ultralytics import YOLO
@@ -196,7 +196,7 @@ else:
         if os.path.exists(W + '/det_glavni/B_yolo11m/weights/best.pt'): mod['SSMOT'] = YOLO(W + '/det_glavni/B_yolo11m/weights/best.pt')
         mod['COCO'] = YOLO('yolo11m.pt'); BOAT = [k for k, n in mod['COCO'].names.items() if n == 'boat']
     except Exception as ex:
-        P('  preskoceno: %s' % str(ex)[:150])
+        P('  skipped: %s' % str(ex)[:150])
 if mod:
     BINS = [(0, 20), (20, 40), (40, 80), (80, 160), (160, 1e9)]; BT = ['<20', '20-40', '40-80', '80-160', '>=160']
     def kos(h): return next(i for i, (a, b) in enumerate(BINS) if a <= h < b)
@@ -227,13 +227,13 @@ if mod:
                     if i in ug or j in ud: continue
                     ug.add(i); ud.add(j); hit[c][kos(ev[i][3])] += 1; ntp[c] += 1
                 nneu[c] += sum(1 for j, d in enumerate(D) if j not in ud and any(iou(o, d) >= 0.5 for o in om))
-            if nf % 50 == 0: print('  %d frejmova (%.0f s)' % (nf, time.time() - t0), flush=True)
+            if nf % 50 == 0: print('  %d frames (%.0f s)' % (nf, time.time() - t0), flush=True)
         cap.release()
     N = sum(ngt)
-    P('  frejmova %d, okvira plovila %d (po visini u px na 1080: %s)' % (nf, N, ', '.join('%s %d' % x for x in zip(BT, ngt))))
-    P('  %-11s %s  %8s %10s %8s' % ('detektor', ' '.join('%7s' % b for b in BT), 'odziv', 'preciznost', 'ms/frm'))
+    P('  frames %d, vessel boxes %d (by height in px at 1080: %s)' % (nf, N, ', '.join('%s %d' % x for x in zip(BT, ngt))))
+    P('  %-11s %s  %8s %10s %8s' % ('detector', ' '.join('%7s' % b for b in BT), 'recall', 'precision', 'ms/frm'))
     for c in CFG:
         P('  %-11s %s  %7.1f%% %9.1f%% %8.0f' % ('%s %d' % c, ' '.join('%6.1f%%' % (100.0 * h / max(1, n)) for h, n in zip(hit[c], ngt)),
           100.0 * ntp[c] / max(1, N), 100.0 * ntp[c] / max(1, nd[c] - nneu[c]), 1000 * ms[c] / max(1, nf)))
-P(); P('Gotovo. %s' % (OUT if not SAMO_D else OUT.replace('.txt', '_detektor.txt')))
+P(); P('Done. %s' % (OUT if not SAMO_D else OUT.replace('.txt', '_detektor.txt')))
 spremi()

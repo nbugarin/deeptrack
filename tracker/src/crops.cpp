@@ -5,8 +5,8 @@
 #include <cstring>
 #include <algorithm>
 
-static const int CW = 128;   // sirina isjecka
-static const int CH = 256;   // visina isjecka
+static const int CW = 128;   // crop width
+static const int CH = 256;   // crop height
 
 bool CropExtractor::init(int maxBatch, int gpuId)
 {
@@ -21,10 +21,10 @@ bool CropExtractor::init(int maxBatch, int gpuId)
     p.size        = 0;
     p.colorFormat = NVBUF_COLOR_FORMAT_RGBA;
     p.layout      = NVBUF_LAYOUT_PITCH;
-    p.memType     = NVBUF_MEM_CUDA_PINNED;   // dostupno i CPU-u i GPU-u
+    p.memType     = NVBUF_MEM_CUDA_PINNED;   // accessible to both the CPU and the GPU
 
     if (NvBufSurfaceCreate(&dst_, maxBatch_, &p) != 0) {
-        printf("[crops] NvBufSurfaceCreate pao\n");
+        printf("[crops] NvBufSurfaceCreate failed\n");
         return false;
     }
     dst_->numFilled = maxBatch_;
@@ -48,14 +48,14 @@ int CropExtractor::extract(NvBufSurfaceParams *srcParams, NvBufSurfaceMemType sr
     cfg.gpu_id       = gpuId_;
     cfg.cuda_stream  = 0;
     if (NvBufSurfTransformSetSessionParams(&cfg) != NvBufSurfTransformError_Success) {
-        printf("[crops] SetSessionParams pao\n"); fflush(stdout);
+        printf("[crops] SetSessionParams failed\n"); fflush(stdout);
         return 0;
     }
 
     const int SW = (int)srcParams->width;
     const int SH = (int)srcParams->height;
 
-    // Omotaj jedan NvBufSurfaceParams u minimalni NvBufSurface.
+    // Wrap one NvBufSurfaceParams in a minimal NvBufSurface.
     NvBufSurface one;
     memset(&one, 0, sizeof(one));
     one.gpuId        = gpuId_;
@@ -65,7 +65,7 @@ int CropExtractor::extract(NvBufSurfaceParams *srcParams, NvBufSurfaceMemType sr
     one.isContiguous = false;
     one.surfaceList  = srcParams;
 
-    // Jedan poziv po isjecku; dst je uvijek jedan element batcha.
+    // One call per crop; dst is always one element of the batch.
     int done = 0;
     for (int i = 0; i < n; i++)
     {
@@ -73,7 +73,7 @@ int CropExtractor::extract(NvBufSurfaceParams *srcParams, NvBufSurfaceMemType sr
         int y = std::max(0, rects[i].y);
         int w = std::min(rects[i].w, SW - x);
         int h = std::min(rects[i].h, SH - y);
-        if (w < 4 || h < 4) continue;          // premalo, preskoci
+        if (w < 4 || h < 4) continue;          // too small, skip
 
         NvBufSurfTransformRect sr, dr;
         sr.left = (uint32_t)x; sr.top = (uint32_t)y;
@@ -100,12 +100,12 @@ int CropExtractor::extract(NvBufSurfaceParams *srcParams, NvBufSurfaceMemType sr
         tp.dst_rect = &dr;
 
         if (NvBufSurfTransform(&one, &d1, &tp) != NvBufSurfTransformError_Success)
-            continue;                          // preskoci neuspjeli isjecak
+            continue;                          // skip the failed crop
         done++;
     }
     if (done == 0) return 0;
 
-    // RGBA -> normaliziran NCHW float
+    // RGBA -> normalised NCHW float
     const float off[3] = { 123.675f, 116.280f, 103.530f };
     const float sc     = 0.01735207f;
 

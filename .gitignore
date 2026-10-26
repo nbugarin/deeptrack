@@ -16,3 +16,7 @@ __pycache__/
 gt.txt
 log_*.json
 scpilot/
+
+# test binaries
+tracker/test_rules
+tracker/test_reid

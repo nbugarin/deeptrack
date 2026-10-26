@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """p55: ALL DeepStream TRACKERS WITH THE STREAMMUX AT THE NATIVE RESOLUTION OF THE SEQUENCES (1280x720) -- YOLO11m, 16 SSMOT sequences (for IEEE)
 
-Plan written BEFORE the run (project: claude/p55_izvorna_rezolucija_plan.md). Tracker values frozen; nothing is selected.
+Plan written BEFORE the run. Tracker values frozen; nothing is selected.
 p54 showed: the sequences are 1280x720, while the probe scripts set the streammux to 1920x1080 -> the resampling degrades the detections (DetA -0.032).
 Steps (GPU):
   1. copies of /workspace/probe_moj.py and /workspace/probe_to_json.py -> /workspace/probe_moj_p55.py and probe_to_json_p55.py, ONLY the streammux width/height changed
@@ -102,9 +102,9 @@ def native_copy(src,dst,w,h):
     t=open(src).read(); t2=t
     for k,v in (('width',w),('height',h)):
         t2,n=MUXRX[k].subn(lambda m,v=v: m.group(1)+str(v)+m.group(2),t2)
-        if n!=1: sys.exit('!! in %s, not exactly one streammux setting "%s" = %s was found (found %d) -- tell Claude'%(os.path.basename(src),k,'1920' if k=='width' else '1080',n))
+        if n!=1: sys.exit('!! in %s, not exactly one streammux setting "%s" = %s was found (found %d) -- report this'%(os.path.basename(src),k,'1920' if k=='width' else '1080',n))
     a=t.splitlines(); b=t2.splitlines(); diff=[i for i,(x,y) in enumerate(zip(a,b)) if x!=y]
-    if len(a)!=len(b) or len(diff)!=2: sys.exit('!! copy %s differs in more than 2 lines -- tell Claude'%os.path.basename(src))
+    if len(a)!=len(b) or len(diff)!=2: sys.exit('!! copy %s differs in more than 2 lines -- report this'%os.path.basename(src))
     open(dst,'w').write(t2); return [b[i].strip() for i in diff]
 # ======================================================================= track.h (same as p43/p52/p53)
 RX=lambda n: re.compile(r'^(\s*(int|float|double|bool)\s+'+re.escape(n)+r'\s*=\s*)([^;]+)(;)',re.M)
@@ -172,14 +172,14 @@ def runs():
     if miss: sys.exit('!! missing:\n   '+'\n   '.join(miss))
     if shutil.disk_usage(W).free/2**30<3: sys.exit('!! less than 3 GB free on the disk')
     res={vres(VID%s) for s in SS16}
-    if len(res)!=1: sys.exit('!! the sequences do not have the same resolution (%s) -- tell Claude'%sorted(res))
+    if len(res)!=1: sys.exit('!! the sequences do not have the same resolution (%s) -- report this'%sorted(res))
     w,h=res.pop(); print('native resolution of the sequences: %dx%d'%(w,h),flush=True)
     orig=open(SRC).read(); bad=check_base(orig)
-    if bad: sys.exit('!! track.h is NOT at the baseline configuration -- nothing was run:\n   '+'\n   '.join(bad)+'\n   Send this output to Claude.')
+    if bad: sys.exit('!! track.h is NOT at the baseline configuration -- nothing was run:\n   '+'\n   '.join(bad)+'\n   Report this output.')
     for src,dst in ((PM_SRC,PM),(PT_SRC,PTJ)):
         ch=native_copy(src,dst,w,h); print('copy %s: only changed -> %s'%(os.path.basename(src),' | '.join(ch)),flush=True)
     st=stanje(); hh={'infer':sha(INFER)}; hh.update({k:sha(c) for k,c,_ in NV})
-    if 'sha' in st and st['sha']!=hh: sys.exit('!! config_infer_11m.txt or the yml of the NVIDIA trackers changed since the first p55 run -- tell Claude')
+    if 'sha' in st and st['sha']!=hh: sys.exit('!! config_infer_11m.txt or the yml of the NVIDIA trackers changed since the first p55 run -- report this')
     st['sha']=hh; st['rezolucija']=[w,h]; st.setdefault('vrijeme',{}); spremi(st)
     todo_nv={k:[s for s in SS16 if not json_ok(outp('nv_'+k,s))] for k,_,_ in NV}
     todo_own={v:[s for s in SS16 if not json_ok(outp(v,s))] for v,_,_ in OWNV}
@@ -206,14 +206,14 @@ def runs():
                 if ch:
                     if os.path.exists(out): os.remove(out)
                     open(O+'/greska.txt','w').write(err)
-                    sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- restoring from the copy; send to Claude: tail -40 /workspace/scpilot/p55/greska.txt'%(', '.join(ch),lab,s))
+                    sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- restoring from the copy; see: tail -40 /workspace/scpilot/p55/greska.txt'%(', '.join(ch),lab,s))
                 if json_ok(out):
                     st['vrijeme']['%s|%d'%(key,s)]=[len(json.load(open(out))),dt]; spremi(st)
                     done[0]+=1; el=time.time()-t0
                     print('  [%3d/%d] %-28s SSMOT %-2d ok   (about %.0f min left)'%(done[0],n_all,lab,s,el/done[0]*(n_all-done[0])/60),flush=True); return
                 if os.path.exists(out): os.remove(out)
                 open(O+'/greska.txt','w').write('%s SSMOT_%d, return code %s\n'%(lab,s,rc)+err)
-            sys.exit('!! %s, SSMOT %d failed in the second attempt too -- send to Claude: tail -40 /workspace/scpilot/p55/greska.txt'%(lab,s))
+            sys.exit('!! %s, SSMOT %d failed in the second attempt too -- see: tail -40 /workspace/scpilot/p55/greska.txt'%(lab,s))
         for k,cfg,lab in NV:
             for s in todo_nv[k]: one('nv_'+k,s,PTJ,cfg,lab)
         for v,cfg,lab in OWNV:
@@ -229,7 +229,7 @@ def runs():
         try: build(); okb=True
         except Exception as e: okb=False; print('!! compilation of the baseline track.h failed: %s'%e,flush=True)
         if okb and os.path.exists(BAK) and open(SRC).read()==open(BAK).read(): os.remove(BAK)
-        print('track.h restored to the baseline configuration%s.'%(' and compiled' if okb else ' (COMPILATION FAILED -- tell Claude)'),flush=True)
+        print('track.h restored to the baseline configuration%s.'%(' and compiled' if okb else ' (COMPILATION FAILED -- report this)'),flush=True)
         for p,hs in sh.items():
             b=p+'.p55bak'
             if os.path.exists(p) and sha(p)==hs:
@@ -237,7 +237,7 @@ def runs():
                 print('   check at the end: %s the same as at the start (SHA256)'%os.path.basename(p),flush=True)
             elif os.path.exists(b):
                 if os.path.exists(p): os.replace(p,p+'.p55_nepoznat')
-                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; tell Claude'%os.path.basename(p),flush=True)
+                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; report this'%os.path.basename(p),flush=True)
         pusti_lock()
     print('GPU part done (%.0f min).'%((time.time()-t0)/60),flush=True)
 # ======================================================================= evaluation
@@ -282,7 +282,7 @@ def ocjena():
     for v,_,lab in OWNV: FILES[v]={s:outp(v,s) for s in SS16}; NAME[v]='ours, '+lab
     for lab,pt in ULT: FILES[lab]={s:pt%s for s in SS16}; NAME[lab]=lab
     for k,pt in OLD.items(): FILES['old_'+k]={s:pt%s for s in SS16}; NAME['old_'+k]=NAME[k]+' (1920x1080)'
-    P('=== p55: DeepStream trackers with the streammux at the native resolution, YOLO11m, 16 SSMOT sequences (TrackEval); plan: claude/p55_izvorna_rezolucija_plan.md')
+    P('=== p55: DeepStream trackers with the streammux at the native resolution, YOLO11m, 16 SSMOT sequences (TrackEval)')
     st=stanje(); P('    native resolution: %s'%('x'.join(str(x) for x in st.get('rezolucija',['?','?']))))
     R={}
     for k,f in FILES.items():
@@ -449,13 +449,13 @@ def popravi():
     if bad: sys.exit('!! after restoring, track.h is still not the baseline -- NOTHING was written:\n   '+'\n   '.join(bad))
     a=old.splitlines(); b=txt.splitlines()
     if len(a)!=len(b) or any(x!=y and not any(re.search(r'\b%s\b'%n,x) for n in BASEV) for x,y in zip(a,b)):
-        sys.exit('!! track.h also differs in other lines -- NOTHING was written; tell Claude')
+        sys.exit('!! track.h also differs in other lines -- NOTHING was written; report this')
     if txt!=old:
         shutil.copy2(SRC,SRC+'.p55_prije_popravka'); open(SRC,'w').write(txt)
     build(); print('track.h restored to the baseline values (%d lines changed) and compiled; copy before the fix: track.h.p55_prije_popravka'%sum(1 for x,y in zip(a,b) if x!=y),flush=True)
     vrati()
     for p in PROT0:
-        if os.path.exists(p+'.p55bak'): print('   !! %s.p55bak still exists -- tell Claude'%os.path.basename(p),flush=True)
+        if os.path.exists(p+'.p55bak'): print('   !! %s.p55bak still exists -- report this'%os.path.basename(p),flush=True)
     dst=S+'/p55_dvostruko'; os.makedirs(dst,exist_ok=True); n=0
     import glob
     for p in glob.glob(W+'/log_p55_*.json')+[O+'/stanje.json',O+'/te_cache.json']:

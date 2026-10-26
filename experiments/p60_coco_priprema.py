@@ -107,7 +107,7 @@ for l in out:
              'pre-cluster-threshold', 'nms-iou-threshold', 'cluster-mode', 'custom-lib-path', 'parse-bbox-func-name', 'engine-create-func-name'):
         print('   ' + l.strip(), flush=True)
 print('   filter-out-class-ids = all except 8 (boat)', flush=True)
-if klase_odjeljci: print('   WARNING: config has sections %s (they apply by class number) -- tell Claude' % klase_odjeljci, flush=True)
+if klase_odjeljci: print('   WARNING: config has sections %s (they apply by class number) -- report this' % klase_odjeljci, flush=True)
 
 # ----------------------------------------------------------------------------- 3. engine
 def pokreni(ulaz, izlaz, timeout):
@@ -145,7 +145,7 @@ def zasticeno(ulaz, izlaz, timeout, logp):
         nv = sorted([p for d in DIRS for p in glob.glob(d + '/*.engine') if p not in sh and os.path.getmtime(p) >= biljeg], key=os.path.getmtime)
         if nv: os.replace(nv[-1], ENG); print('   new engine %s -> %s' % (nv[-1], ENG), flush=True)
     for p, h in sh.items():
-        if not os.path.exists(p) or sha(p) != h: stani('existing engine %s is not the same as before -- tell Claude' % p)
+        if not os.path.exists(p) or sha(p) != h: stani('existing engine %s is not the same as before -- report this' % p)
     return kod, dt
 
 if os.path.exists(ENG):
@@ -154,14 +154,14 @@ else:
     print('3) building the TensorRT engine (the first time 3-10 min; existing engines are protected by a copy) ...', flush=True)
     kod, dt = zasticeno(kratko, C + '/proba_gradnja.json', 2400, C + '/gradnja_log.txt')
     if not os.path.exists(ENG):
-        stani('engine was not created (code %d, %.0f s). Send to Claude: tail -60 %s/gradnja_log.txt' % (kod, dt, C))
+        stani('engine was not created (code %d, %.0f s). See: tail -60 %s/gradnja_log.txt' % (kod, dt, C))
     print('   engine done (%.0f s, %.0f MB); existing engines unchanged' % (dt, os.path.getsize(ENG) / 1e6), flush=True)
 
 # ----------------------------------------------------------------------------- 4. check
 print('4) check: loading the engine and detections on the first 150 frames of clip-01 ...', flush=True)
 mt = os.path.getmtime(ENG)
 kod, dt = zasticeno(kratko, C + '/proba.json', 900, C + '/proba_log.txt')
-if kod != 0 or not os.path.exists(C + '/proba.json'): stani('check failed (code %d). Send to Claude: tail -60 %s/proba_log.txt' % (kod, C))
+if kod != 0 or not os.path.exists(C + '/proba.json'): stani('check failed (code %d). See: tail -60 %s/proba_log.txt' % (kod, C))
 if os.path.getmtime(ENG) != mt: print('   WARNING: the engine was rebuilt instead of loaded', flush=True)
 d = json.load(open(C + '/proba.json'))
 if isinstance(d, dict): d = d.get('frames') or d.get('data') or list(d.values())[0]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """p52: OUR TRACKER WITH THE YOLO11m DETECTOR (for IEEE) -- does the improvement also hold with a modern detector?
 
-Plan written BEFORE the run (project: claude/p52_vlastiti_11m_plan.md):
+Plan written BEFORE the run:
   main outcome (YOLO11m, 16 SSMOT sequences as in MDPI): final variant versus baseline; the improvement HOLDS if IDSW is
   significantly lower (Wilcoxon, p < 0.05) and the mean dHOTA >= -0.005. Mechanism: share of switches with a class change (YOLO11m versus
   YOLOv8x). Comparison with NvSORT, NvDeepSORT, NvDCF r1/r2, Ultralytics ByteTrack/BoT-SORT (logs from p44, Holm). Own 5 secondary.
@@ -158,13 +158,13 @@ def runs():
     if miss: sys.exit('!! missing:\n   '+'\n   '.join(miss))
     if shutil.disk_usage(W).free/2**30<3: sys.exit('!! less than 3 GB free on the disk')
     orig=open(SRC).read(); bad=check_base(orig)
-    if bad: sys.exit('!! track.h is NOT at the baseline configuration -- nothing was run:\n   '+'\n   '.join(bad)+'\n   Send this output to Claude.')
+    if bad: sys.exit('!! track.h is NOT at the baseline configuration -- nothing was run:\n   '+'\n   '.join(bad)+'\n   Report this output.')
     mh=getv(orig,'minHitsHigh')[1]
     m=re.search(r'^\s*model-engine-file\s*=\s*(\S+)',open(INFER).read(),re.M)
     print('track.h at the baseline configuration (checked); minHitsHigh in track.h = %s (not changed, as in p43)'%('%g'%mh if mh is not None else 'none'),flush=True)
     print('config_infer_11m.txt: model-engine-file = %s'%(m.group(1) if m else 'NONE'),flush=True)
     st=stanje(); h_inf=sha(INFER)
-    if 'infer_sha' in st and st['infer_sha']!=h_inf: sys.exit('!! config_infer_11m.txt changed since the first p52 run -- tell Claude')
+    if 'infer_sha' in st and st['infer_sha']!=h_inf: sys.exit('!! config_infer_11m.txt changed since the first p52 run -- report this')
     st['infer_sha']=h_inf; spremi(st)
     rep=min(OWN,key=lambda s: nframes(VID['own']%s))
     todo={v:[(ds,s) for ds in ('ss','own') for s in SEQS[ds] if not json_ok(LOG%(v,ds,s))] for v in ('base','final')}
@@ -188,7 +188,7 @@ def runs():
             if ch:
                 if os.path.exists(out): os.remove(out)
                 open(O+'/greska.txt','w').write(err)
-                sys.exit('!! %s changed during the run (%s) -- restoring from the copy; send to Claude: tail -40 /workspace/scpilot/p52/greska.txt'%(', '.join(ch),os.path.basename(video)))
+                sys.exit('!! %s changed during the run (%s) -- restoring from the copy; see: tail -40 /workspace/scpilot/p52/greska.txt'%(', '.join(ch),os.path.basename(video)))
             if json_ok(out): return True
             if os.path.exists(out): os.remove(out)
             open(O+'/greska.txt','w').write('%s, return code %s\n'%(video,rc)+err); return False
@@ -215,14 +215,14 @@ def runs():
                 st[v+'_repro']=res; spremi(st); tick('reproducibility check (%s)'%VARN[v]); print('     -> %s'%res['ishod'],flush=True)
             for ds,s in todo[v]:
                 ok=one(VID[ds]%s,LOG%(v,ds,s),INFER) or one(VID[ds]%s,LOG%(v,ds,s),INFER)
-                if not ok: sys.exit('!! %s, %s %d failed in the second attempt too -- send to Claude: tail -40 /workspace/scpilot/p52/greska.txt'%(VARN[v],'SSMOT' if ds=='ss' else 'own',s))
+                if not ok: sys.exit('!! %s, %s %d failed in the second attempt too -- see: tail -40 /workspace/scpilot/p52/greska.txt'%(VARN[v],'SSMOT' if ds=='ss' else 'own',s))
                 tick('%s, %s %d'%(VARN[v],'SSMOT' if ds=='ss' else 'own',s))
     finally:
         shutil.copy(BAK,SRC)
         try: build(); okb=True
         except Exception as e: okb=False; print('!! compilation of the baseline track.h failed: %s'%e,flush=True)
         if okb and open(SRC).read()==open(BAK).read(): os.remove(BAK)
-        print('track.h restored to the baseline configuration%s.'%(' and compiled' if okb else ' (COMPILATION FAILED -- tell Claude)'),flush=True)
+        print('track.h restored to the baseline configuration%s.'%(' and compiled' if okb else ' (COMPILATION FAILED -- report this)'),flush=True)
         for p,h in sh.items():
             b=p+'.p52bak'
             if os.path.exists(p) and sha(p)==h:
@@ -230,7 +230,7 @@ def runs():
                 print('   check at the end: %s the same as at the start (SHA256)'%os.path.basename(p),flush=True)
             elif os.path.exists(b):
                 if os.path.exists(p): os.replace(p,p+'.p52_nepoznat')
-                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; tell Claude'%os.path.basename(p),flush=True)
+                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; report this'%os.path.basename(p),flush=True)
         if os.path.exists(LOCK): os.remove(LOCK)
     print('GPU part done (%.0f min).'%((time.time()-t0)/60),flush=True)
     return True
@@ -277,7 +277,7 @@ def ocjena():
         f={s:first(pats,s) for s in seqs}
         if all(f.values()): SETS[key]=(ds,f)
         else: P('  (no complete logs for "%s": %d of %d)'%(key,sum(1 for x in f.values() if x),len(seqs)))
-    P('=== p52: our tracker with YOLO11m -- evaluation (TrackEval); plan written before the run (claude/p52_vlastiti_11m_plan.md)')
+    P('=== p52: our tracker with YOLO11m -- evaluation (TrackEval); plan written before the run')
     for v in ('base','final'):
         add('11m|ss|'+v,'ss',SS16,[W+'/log_p52_%s_ss_%%d.json'%v]); add('11m|own|'+v,'own',OWN,[W+'/log_p52_%s_own_%%d.json'%v])
         add('v8|ss|'+v,'ss',SS15,V8[('ss',v)]); add('v8|own|'+v,'own',OWN,V8[('own',v)])

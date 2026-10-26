@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """p70: HOW MANY TIMES THE EXCEPTION HANDLER RUNS (unfreeze, BoxMOT 10.0.83) FOR OC-SORT, DEEP OC-SORT AND HYBRID-SORT -- 16 SSMOT sequences
 
-Plan written BEFORE the run (project: claude/p69_p70_plan.md).
+Plan written BEFORE the run.
 p56 recorded the number of calls only for Hybrid-SORT (886, logged for 15 of the 16 sequences). This script repeats p56 for the three trackers of the OC-SORT family
 with the SAME code (imports /workspace/p56_iste_detekcije.py: the same patch, the same constructors, the same detections scpilot/p54/det/ds_mux_<n>.json,
 the same OSNet), counts IndexError and ValueError per sequence and compares the output with the output of p56 (IDs and boxes to 0.01 px).
@@ -98,7 +98,7 @@ def runs():
     print('GPU part done (%.0f min).' % ((time.time() - t0) / 60), flush=True)
 def ocjena():
     m = ucitaj_p56(); st = stanje(); pk = st.get('preskok', {}); OUT = {}
-    P('=== p70: exception handler in unfreeze (BoxMOT 10.0.83), 16 SSMOT sequences, the same detections as p56; plan: claude/p69_p70_plan.md')
+    P('=== p70: exception handler in unfreeze (BoxMOT 10.0.83), 16 SSMOT sequences, the same detections as p56')
     P('  %-13s %10s %10s %18s %22s' % ('tracker', 'IndexError', 'ValueError', 'seqs with a call', 'identical to p56'))
     for name in NAMES:
         v = {s: pk['%s|%d' % (name, s)] for s in m.SS16 if '%s|%d' % (name, s) in pk}
@@ -117,7 +117,7 @@ def ocjena():
     P('\n=== RULE FROM THE PLAN')
     sve_isto = all(OUT[n]['identicno'] == 16 for n in NAMES); zab = all(OUT[n]['zabiljezeno'] == 16 for n in NAMES)
     if not zab: P('  not all 16 sequences recorded for all trackers -- first finish the GPU part')
-    elif not sve_isto: P('  outcome 3: output NOT identical to p56 -- the numbers in the paper do not change; report the counts as "in a repeated run"; tell Claude')
+    elif not sve_isto: P('  outcome 3: output NOT identical to p56 -- the numbers in the paper do not change; report the counts as "in a repeated run"; report this')
     else:
         oc = OUT['OC-SORT']['IndexError'] + OUT['OC-SORT']['ValueError']; do = OUT['Deep OC-SORT']['IndexError'] + OUT['Deep OC-SORT']['ValueError']
         if oc == 0 and do == 0: P('  outcome 1: output identical to p56; for OC-SORT and Deep OC-SORT the handler was NOT invoked -> in IV-D "never invoked"')

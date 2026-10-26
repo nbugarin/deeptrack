@@ -91,7 +91,7 @@ def write_infer(labels):
         if re.search(r'^\s*\[class-attrs-\d+\]',txt,re.M) or re.search(r'^\s*filter-out-class-ids',txt,re.M):
             print('   %s has settings tied to individual classes -- not using it as a template'%os.path.basename(t)); continue
         tpl=t; break
-    if tpl is None: sys.exit('!! no suitable template (config_infer_boat.txt / config_infer_B.txt) -- tell Claude')
+    if tpl is None: sys.exit('!! no suitable template (config_infer_boat.txt / config_infer_B.txt) -- report this')
     out=[]; seen=set()
     for line in open(tpl):
         k=line.split('=')[0].strip()
@@ -102,7 +102,7 @@ def write_infer(labels):
         else: k=None
         if k: seen.add(k)
         out.append(line)
-    if len(seen)<4: sys.exit('!! %s does not have all the expected fields (found: %s) -- tell Claude'%(os.path.basename(tpl),sorted(seen)))
+    if len(seen)<4: sys.exit('!! %s does not have all the expected fields (found: %s) -- report this'%(os.path.basename(tpl),sorted(seen)))
     open(INFER,'w').write(''.join(out))
     print('2) created %s (template %s; only onnx-file, model-engine-file, labelfile-path, num-detected-classes changed):'%(INFER,os.path.basename(tpl)),flush=True)
     for l in out:
@@ -137,14 +137,14 @@ def build_engine():
         if os.path.exists(ENG): break
     if not os.path.exists(ENG):
         open(O+'/greska.txt','w').write('\n\n'.join(tails))
-        sys.exit('!! the engine for YOLO11m was not created -- send to Claude: tail -60 /workspace/scpilot/p44/greska.txt')
+        sys.exit('!! the engine for YOLO11m was not created -- see: tail -60 /workspace/scpilot/p44/greska.txt')
     print('   engine done: %.0f MB, %.1f min'%(os.path.getsize(ENG)/2**20,(time.time()-t_all)/60),flush=True)
     shutil.rmtree(BD,ignore_errors=True)
 def deepstream():
     v1sha=None
     if os.path.exists(V1ENG):
         v1sha=sha(V1ENG); shutil.copy2(V1ENG,V1BAK)
-        if sha(V1BAK)!=v1sha: os.remove(V1BAK); sys.exit('!! the backup copy of engine v1 is not valid -- STOP, tell Claude')
+        if sha(V1BAK)!=v1sha: os.remove(V1BAK); sys.exit('!! the backup copy of engine v1 is not valid -- STOP, report this')
         print('0) engine of detector v1: backup copy made',flush=True)
     try:
         isz=imgsz()
@@ -154,7 +154,7 @@ def deepstream():
             if not os.path.exists(ONNX):
                 c=[p for p in glob.glob(WD+'/*.onnx') if os.path.getmtime(p)>=t0-1]
                 if len(c)==1: shutil.move(c[0],ONNX)
-            if not (os.path.exists(ONNX) and os.path.exists(LAB)): sys.exit('!! conversion failed -- send to Claude:\n'+tail(r))
+            if not (os.path.exists(ONNX) and os.path.exists(LAB)): sys.exit('!! conversion failed -- see:\n'+tail(r))
         labels=[l.strip() for l in open(LAB) if l.strip()]
         print('   ONNX %s (%.0f MB) | classes %d: %s'%(ONNX,os.path.getsize(ONNX)/2**20,len(labels),', '.join(labels)),flush=True)
         write_infer(labels)
@@ -173,7 +173,7 @@ def deepstream():
                 if os.path.exists(NEW%(t,s)): os.remove(NEW%(t,s))
                 open(O+'/greska.txt','w').write(err)
                 sys.exit('!! the engine of detector v1 changed during the run (did DeepStream build a new engine?) -- restoring from the copy; '
-                         'send to Claude: tail -40 /workspace/scpilot/p44/greska.txt')
+                         'see: tail -40 /workspace/scpilot/p44/greska.txt')
             ok=json_ok(NEW%(t,s)); note=''
             if ok:
                 d=json.load(open(NEW%(t,s))); mx=max([int(x['frame']) for x in d]+[0])
@@ -183,12 +183,12 @@ def deepstream():
             print('   [%2d/%d] %-7s SSMOT_%-2d %s (%.0f s, about %.0f min of DeepStream left)%s'%(i,len(todo),t,s,'ok' if ok else 'ERROR',dt,eta,note),flush=True)
             if not ok:
                 open(O+'/greska.txt','w').write(err)
-                sys.exit('!! the run failed -- send to Claude: tail -40 /workspace/scpilot/p44/greska.txt')
+                sys.exit('!! the run failed -- see: tail -40 /workspace/scpilot/p44/greska.txt')
     finally:
         if v1sha is not None:
             vrati()
             print('   check at the end: engine of detector v1 %s'%('the same as at the start (SHA256)' if os.path.exists(V1ENG) and sha(V1ENG)==v1sha
-                  else '!! NOT THE SAME AS AT THE START -- tell Claude'),flush=True)
+                  else '!! NOT THE SAME AS AT THE START -- report this'),flush=True)
 def ultra():
     todo=[(k,s) for k in ('bytetrack','botsort') for s in SS if not json_ok(ULT%(k,s))]
     if not todo: return
@@ -226,7 +226,7 @@ def runs():
     if miss: sys.exit('!! missing:\n   '+'\n   '.join(miss))
     free=shutil.disk_usage(W).free/2**30
     if free<2: sys.exit('!! only %.1f GB free on the disk -- free some space and run again'%free)
-    if os.environ.get('P44_TEST')!='1' and sha(PT)!=SHA_PT: sys.exit('!! best.pt is NOT the frozen YOLO11m (SHA256 does not match) -- tell Claude.')
+    if os.environ.get('P44_TEST')!='1' and sha(PT)!=SHA_PT: sys.exit('!! best.pt is NOT the frozen YOLO11m (SHA256 does not match) -- report this.')
     open(LOCK,'w').write(str(os.getpid()))
     try:
         deepstream(); ultra()

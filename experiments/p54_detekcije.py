@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """p54: WHY DOES DeepStream WITH THE SAME YOLO11m WEIGHTS GIVE A LOWER DetA THAN Ultralytics? -- CLEAN COMPARISON OF THE DETECTIONS (without a tracker)
 
-Plan written BEFORE the run (project: claude/p54_detekcije_plan.md). Diagnostics; the tracker is not touched, nothing is selected on the test set.
+Plan written BEFORE the run. Diagnostics; the tracker is not touched, nothing is selected on the test set.
 Detections (16 SSMOT sequences as in MDPI), confidence threshold 0.25 everywhere; every detection gets a unique ID, only
 DetA, DetRe, DetPr, LocA (TrackEval HOTA submeasures) and the number of detections are evaluated:
   DeepStream (new script probe_det.py = the same pipeline as probe_to_json.py, but WITHOUT nvtracker; boxes directly from nvinfer):
@@ -181,17 +181,17 @@ def runs():
     if miss: sys.exit('!! missing:\n   '+'\n   '.join(miss))
     if shutil.disk_usage(W).free/2**30<3: sys.exit('!! less than 3 GB free on the disk')
     st=stanje(); h=sha(INFER)
-    if 'infer_sha' in st and st['infer_sha']!=h: sys.exit('!! config_infer_11m.txt changed since the first p54 run -- tell Claude')
+    if 'infer_sha' in st and st['infer_sha']!=h: sys.exit('!! config_infer_11m.txt changed since the first p54 run -- report this')
     st['infer_sha']=h; st.setdefault('vrijeme',{})
     res={s:vres(VID%s) for s in SS16}; nat=sorted({r[:2] for r in res.values()})
     print('resolution of the sequences: %s'%', '.join('%dx%d (%d sequences)'%(w,hh,sum(1 for r in res.values() if r[:2]==(w,hh))) for w,hh in nat),flush=True)
-    if len(nat)!=1: sys.exit('!! the sequences do not have the same resolution (%s) -- tell Claude'%nat)
+    if len(nat)!=1: sys.exit('!! the sequences do not have the same resolution (%s) -- report this'%nat)
     native=nat[0]; st['rezolucija']=list(native); spremi(st)
     V,U=variants(native)
     for v,c,_ in V:
         open(CF+'/%s.txt'%v,'w').write(cfg_copy(c['nms'],c['bil']))
     norm=lambda x: [l.rstrip() for l in x.strip().splitlines()]
-    if norm(open(CF+'/ds_ref.txt').read())!=norm(open(INFER).read()): sys.exit('!! the ds_ref copy differs from config_infer_11m.txt -- tell Claude')
+    if norm(open(CF+'/ds_ref.txt').read())!=norm(open(INFER).read()): sys.exit('!! the ds_ref copy differs from config_infer_11m.txt -- report this')
     if os.environ.get('P54_PROBE_MOCK'): shutil.copy(os.environ['P54_PROBE_MOCK'],PROBE)
     else: open(PROBE,'w').write(PROBE_SRC)
     todo=[(v,s) for v,_,_ in V+U for s in SS16 if not json_ok(outp(v,s))]
@@ -218,16 +218,16 @@ def runs():
                     if ch:
                         if os.path.exists(out): os.remove(out)
                         open(O+'/greska.txt','w').write(err)
-                        sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- restoring from the copy; send to Claude: tail -40 /workspace/scpilot/p54/greska.txt'%(', '.join(ch),v,s))
+                        sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- restoring from the copy; see: tail -40 /workspace/scpilot/p54/greska.txt'%(', '.join(ch),v,s))
                     if json_ok(out):
                         st['vrijeme']['%s|%d'%(v,s)]=[len(json.load(open(out))),time.time()-ta]; spremi(st); ok=True; break
                     if os.path.exists(out): os.remove(out)
                     open(O+'/greska.txt','w').write('%s SSMOT_%d\n'%(v,s)+err)
-                if not ok: sys.exit('!! %s, SSMOT %d failed in the second attempt too -- send to Claude: tail -40 /workspace/scpilot/p54/greska.txt'%(lab,s))
+                if not ok: sys.exit('!! %s, SSMOT %d failed in the second attempt too -- see: tail -40 /workspace/scpilot/p54/greska.txt'%(lab,s))
                 tick(lab,s)
         if any(vv.startswith('ul_') for vv,_ in todo):
             try: from ultralytics import YOLO
-            except Exception as e: sys.exit('!! Ultralytics cannot be loaded (%s) -- the DeepStream part is saved; tell Claude'%e)
+            except Exception as e: sys.exit('!! Ultralytics cannot be loaded (%s) -- the DeepStream part is saved; report this'%e)
             isz=imgsz(); print('Ultralytics: imgsz %d'%isz,flush=True)
             for v,c,lab in U:
                 for s in [s for vv,s in todo if vv==v]:
@@ -249,7 +249,7 @@ def runs():
                 print('   check at the end: %s the same as at the start (SHA256)'%os.path.basename(p),flush=True)
             elif os.path.exists(b):
                 if os.path.exists(p): os.replace(p,p+'.p54_nepoznat')
-                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; tell Claude'%os.path.basename(p),flush=True)
+                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; report this'%os.path.basename(p),flush=True)
         if os.path.exists(LOCK): os.remove(LOCK)
     print('GPU part done (%.0f min).'%((time.time()-t0)/60),flush=True)
 # ======================================================================= evaluation
@@ -286,7 +286,7 @@ def ocjena():
             res[s]={k:float(np.mean(hh[k])) for k in ('HOTA','DetA','DetRe','DetPr','LocA','AssA')}; res[s]['det_po_frejmu']=ndet[s]
         C[key]={'sig':sg,'res':{str(s):v for s,v in res.items()}}; json.dump(C,open(O+'/te_cache.json','w')); return res
     st=stanje(); native=tuple(st.get('rezolucija',(1920,1080))); V,U=variants(native)
-    P('=== p54: clean comparison of the YOLO11m detections (without a tracker), 16 SSMOT sequences, threshold 0.25; plan written before the run (claude/p54_detekcije_plan.md)')
+    P('=== p54: clean comparison of the YOLO11m detections (without a tracker), 16 SSMOT sequences, threshold 0.25; plan written before the run')
     P('    native resolution of the sequences: %dx%d; every detection has a unique ID -> only DetA, DetRe, DetPr, LocA are valid'%native)
     R={}; NAME={}
     for v,_,lab in V+U:

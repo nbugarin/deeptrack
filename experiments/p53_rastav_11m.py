@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """p53: DECOMPOSITION AND SENSITIVITY OF THE FINAL VARIANT OF OUR TRACKER -- YOLO11m, 16 SSMOT sequences (for IEEE, SSMOT only)
 
-Plan written BEFORE the run (project: claude/p53_rastav_11m_plan.md). Everything is descriptive; nothing is selected on these results.
+Plan written BEFORE the run. Everything is descriptive; nothing is selected on these results.
 Variants (all with YOLO11m, config_infer_11m.txt from p44):
   cls    class penalty only   = baseline + classGate 0, classPenalty 0.5
   prob   probation only       = baseline + confHigh 0.8, maxAgeSec 3.3333, minHitsSec 0.6667 (the hard class condition stays)
@@ -142,10 +142,10 @@ def runs():
     if miss: sys.exit('!! missing (p52 must be done):\n   '+'\n   '.join(miss))
     if shutil.disk_usage(W).free/2**30<3: sys.exit('!! less than 3 GB free on the disk')
     orig=open(SRC).read(); bad=check_base(orig)
-    if bad: sys.exit('!! track.h is NOT at the baseline configuration -- nothing was run:\n   '+'\n   '.join(bad)+'\n   Send this output to Claude.')
+    if bad: sys.exit('!! track.h is NOT at the baseline configuration -- nothing was run:\n   '+'\n   '.join(bad)+'\n   Report this output.')
     print('track.h at the baseline configuration (checked); minHitsHigh = %s (not changed)'%('%g'%getv(orig,'minHitsHigh')[1] if getv(orig,'minHitsHigh')[1] is not None else 'none'),flush=True)
     st=stanje(); h_inf=sha(INFER)
-    if 'infer_sha' in st and st['infer_sha']!=h_inf: sys.exit('!! config_infer_11m.txt changed since the first p53 run -- tell Claude')
+    if 'infer_sha' in st and st['infer_sha']!=h_inf: sys.exit('!! config_infer_11m.txt changed since the first p53 run -- report this')
     st['infer_sha']=h_inf; st.setdefault('vrijeme',{}); spremi(st)
     todo={v:[s for s in SS16 if not json_ok(outp(v,s))] for v,_,_ in VARS}
     n_all=sum(len(t) for t in todo.values())
@@ -171,7 +171,7 @@ def runs():
             if ch:
                 if os.path.exists(out): os.remove(out)
                 open(O+'/greska.txt','w').write(err)
-                sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- restoring from the copy; send to Claude: tail -40 /workspace/scpilot/p53/greska.txt'%(', '.join(ch),v,s))
+                sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- restoring from the copy; see: tail -40 /workspace/scpilot/p53/greska.txt'%(', '.join(ch),v,s))
             if json_ok(out):
                 st['vrijeme']['%s|%d'%(v,s)]=[len(json.load(open(out))),dt]; spremi(st); return True
             if os.path.exists(out): os.remove(out)
@@ -184,7 +184,7 @@ def runs():
             print('%s: tracker compiled (%s)'%(name,', '.join('%s %g'%(k,x) for k,x in cfg.items()) or 'baseline track.h'),flush=True)
             for s in todo[v]:
                 ok=one(v,s) or one(v,s)
-                if not ok: sys.exit('!! %s, SSMOT %d failed in the second attempt too -- send to Claude: tail -40 /workspace/scpilot/p53/greska.txt'%(name,s))
+                if not ok: sys.exit('!! %s, SSMOT %d failed in the second attempt too -- see: tail -40 /workspace/scpilot/p53/greska.txt'%(name,s))
                 done[0]+=1; el=time.time()-t0
                 print('  [%3d/%d] %-32s SSMOT %-2d ok   (about %.0f min left)'%(done[0],n_all,name,s,el/done[0]*(n_all-done[0])/60),flush=True)
     finally:
@@ -192,7 +192,7 @@ def runs():
         try: build(); okb=True
         except Exception as e: okb=False; print('!! compilation of the baseline track.h failed: %s'%e,flush=True)
         if okb and open(SRC).read()==open(BAK).read(): os.remove(BAK)
-        print('track.h restored to the baseline configuration%s.'%(' and compiled' if okb else ' (COMPILATION FAILED -- tell Claude)'),flush=True)
+        print('track.h restored to the baseline configuration%s.'%(' and compiled' if okb else ' (COMPILATION FAILED -- report this)'),flush=True)
         for p,h in sh.items():
             b=p+'.p53bak'
             if os.path.exists(p) and sha(p)==h:
@@ -200,7 +200,7 @@ def runs():
                 print('   check at the end: %s the same as at the start (SHA256)'%os.path.basename(p),flush=True)
             elif os.path.exists(b):
                 if os.path.exists(p): os.replace(p,p+'.p53_nepoznat')
-                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; tell Claude'%os.path.basename(p),flush=True)
+                os.replace(b,p); print('   !! %s changed -- RESTORED from the backup copy; report this'%os.path.basename(p),flush=True)
         if os.path.exists(LOCK): os.remove(LOCK)
     print('GPU part done (%.0f min).'%((time.time()-t0)/60),flush=True)
     return True
@@ -241,7 +241,7 @@ def ocjena():
             res[int(q[1:])]={'HOTA':m('HOTA'),'DetA':m('DetA'),'AssA':m('AssA'),'AssRe':m('AssRe'),'AssPr':m('AssPr'),
                              'IDF1':float(h['Identity']['IDF1']),'MOTA':float(h['CLEAR']['MOTA']),'IDSW':float(h['CLEAR']['IDSW'])}
         C[key]={'sig':sg,'res':{str(s):v for s,v in res.items()}}; json.dump(C,open(O+'/te_cache.json','w')); return res
-    P('=== p53: decomposition and sensitivity of the final variant, YOLO11m, 16 SSMOT sequences (TrackEval); plan written before the run (claude/p53_rastav_11m_plan.md)')
+    P('=== p53: decomposition and sensitivity of the final variant, YOLO11m, 16 SSMOT sequences (TrackEval); plan written before the run')
     FILES={'base':{s:P52%('base',s) for s in SS16},'final':{s:P52%('final',s) for s in SS16}}
     for v in ('cls','prob','l02','l03','c07'): FILES[v]={s:outp(v,s) for s in SS16}
     NAME={'base':'baseline','final':'final variant','cls':'class penalty only','prob':'probation only',

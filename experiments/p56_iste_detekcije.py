@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """p56: COMPARISON WITH SOTA TRACKERS ON THE SAME DETECTIONS -- YOLO11m, DeepStream detections at 1280x720 (p54 ds_mux), 16 SSMOT sequences
 
-Plan written BEFORE the run (project: claude/p56_iste_detekcije_plan.md).
+Plan written BEFORE the run.
 All trackers get the same detections: the BoxMOT trackers read scpilot/p54/det/ds_mux_<n>.json (output of nvinfer, config_infer_11m.txt,
 streammux 1280x720); our tracker and the NVIDIA trackers in p55 get exactly these detections inside DeepStream.
 BoxMOT: ByteTrack, BoT-SORT, OC-SORT, Deep OC-SORT, StrongSORT, Hybrid-SORT, BoostTrack (ImprAssoc) -- as many as the installed version has;
@@ -202,7 +202,7 @@ def ocjena():
     for name,_ in CAND: SETS[name]=('bm',{s:outp(name,s) for s in SS16})
     for k,pt in ULT.items(): SETS[k]=('ul',{s:pt%s for s in SS16})
     P('=== p56: comparison on the SAME detections (DeepStream, YOLO11m, streammux 1280x720, threshold 0.25), 16 SSMOT sequences, TrackEval')
-    P('    plan written before the run: claude/p56_iste_detekcije_plan.md; BoxMOT with default settings, appearance model osnet_x1_0_vessel.pt')
+    P('    plan written before the run; BoxMOT with default settings, appearance model osnet_x1_0_vessel.pt')
     if st.get('nema'): P('    not in the installed version of BoxMOT / cannot be created: %s'%', '.join(st['nema']))
     R={}; GRP={}
     for k,(g,f) in SETS.items():

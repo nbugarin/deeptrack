@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """p67 -- MIPRO 2027: CONFIDENCE AND CALIBRATION OF THE YOLO11m DETECTOR AND CLASS STABILITY ON THREE MARITIME SETS.
 
-Plan written BEFORE the run (project: claude/p67_mipro_kalibracija_plan.md). ONLY the detector is measured (without a tracker).
+Plan written BEFORE the run. ONLY the detector is measured (without a tracker).
 Detectors (DeepStream nvinfer, TensorRT FP16, input 640, threshold 0.25 -- the same input the tracker gets in the whole paper):
   ssmot = YOLO11m trained on SSMOT (config_infer_11m.txt)
   coco  = general COCO YOLO11m, class boat only (config_infer_coco11m_640.txt)
@@ -14,7 +14,7 @@ Analysis only (CPU):  python3 /workspace/p67_kalibracija.py --analiza
 FVessel, same offset for both detectors (p67b, CPU, ~5 min):  python3 /workspace/p67_kalibracija.py --fvessel-pomaci
 Calibration against IoU (p67c, CPU, ~5 min):  python3 /workspace/p67_kalibracija.py --laece
 If interrupted:       python3 /workspace/p67_kalibracija.py --vrati      (then rerun -- it resumes)
-Output: /workspace/scpilot/p67_kalibracija.txt  and  /workspace/scpilot/p67/p67_rezultati.json (send to Claude for the figures)
+Output: /workspace/scpilot/p67_kalibracija.txt  and  /workspace/scpilot/p67/p67_rezultati.json (data for the figures)
 """
 import os, re, sys, json, glob, time, shutil, hashlib, subprocess, atexit, collections, warnings
 warnings.filterwarnings('ignore')
@@ -202,13 +202,13 @@ def runs():
         miss = [p for _, v, g in SN[sk] for p in (v, g) if not os.path.exists(p)]
         if miss or not SN[sk]: sys.exit('!! set %s: no sequences or missing:\n   %s' % (NAZ_SK[sk], '\n   '.join(miss[:10])))
         res = {meta(v)[:2] for _, v, _ in SN[sk]}
-        if len(res) != 1: sys.exit('!! %s: the sequences do not have the same resolution (%s) -- tell Claude' % (NAZ_SK[sk], sorted(res)))
+        if len(res) != 1: sys.exit('!! %s: the sequences do not have the same resolution (%s) -- report this' % (NAZ_SK[sk], sorted(res)))
         print('%-9s %2d sequences, %dx%d, %d frames' % (NAZ_SK[sk], len(SN[sk]), *list(res)[0], sum(meta(v)[3] for _, v, _ in SN[sk])), flush=True)
     if shutil.disk_usage(W).free / 2 ** 30 < 3: sys.exit('!! less than 3 GB free on the disk')
     st = stanje(); st.setdefault('vrijeme', {}); st.setdefault('cfg_sha', {})
     for d in DETS:
         h = sha(DETS[d][0])
-        if d in st['cfg_sha'] and st['cfg_sha'][d] != h: sys.exit('!! %s changed since the first p67 run -- tell Claude' % DETS[d][0])
+        if d in st['cfg_sha'] and st['cfg_sha'][d] != h: sys.exit('!! %s changed since the first p67 run -- report this' % DETS[d][0])
         st['cfg_sha'][d] = h
     spremi(st)
     if os.environ.get('P67_PROBE_MOCK'): shutil.copy(os.environ['P67_PROBE_MOCK'], PROBE)
@@ -234,12 +234,12 @@ def runs():
                 if ch:
                     if os.path.exists(out + '.tmp'): os.remove(out + '.tmp')
                     open(O + '/greska.txt', 'w').write(err)
-                    sys.exit('!! %s changed during the run (%s, %s) -- restoring from the copy; send to Claude: tail -40 %s/greska.txt' % (', '.join(ch), d, ime, O))
+                    sys.exit('!! %s changed during the run (%s, %s) -- restoring from the copy; see: tail -40 %s/greska.txt' % (', '.join(ch), d, ime, O))
                 if json_ok(out + '.tmp'):
                     os.replace(out + '.tmp', out); st['vrijeme']['%s|%s|%s' % (d, sk, ime)] = [n, time.time() - ta]; spremi(st); ok = True; break
                 if os.path.exists(out + '.tmp'): os.remove(out + '.tmp')
                 open(O + '/greska.txt', 'w').write('%s %s %s\n' % (d, sk, ime) + err)
-            if not ok: sys.exit('!! %s / %s failed in the second attempt too -- send to Claude: tail -40 %s/greska.txt' % (d, ime, O))
+            if not ok: sys.exit('!! %s / %s failed in the second attempt too -- see: tail -40 %s/greska.txt' % (d, ime, O))
             nfr[0] += n; el = time.time() - t0
             print('  [%3d/%d] %-5s %-9s %-14s ok (%.0f FPS; about %.0f min left)' % (i, len(todo), d, NAZ_SK[sk], ime, n / max(time.time() - ta, 1e-6),
                   el / nfr[0] * (tot - nfr[0]) / 60), flush=True)
@@ -250,7 +250,7 @@ def runs():
                 if os.path.exists(b): os.remove(b)
             elif os.path.exists(b):
                 if os.path.exists(p): os.replace(p, p + '.p67_nepoznat')
-                os.replace(b, p); print('   !! %s changed -- RESTORED from the backup copy; tell Claude' % os.path.basename(p), flush=True)
+                os.replace(b, p); print('   !! %s changed -- RESTORED from the backup copy; report this' % os.path.basename(p), flush=True)
         pusti_lock()
     print('GPU part done (%.0f min).' % ((time.time() - t0) / 60), flush=True)
 
@@ -471,7 +471,7 @@ def boot2(im1, im2, fn1, fn2, op, rng, nboot=NBOOT):
 # ============================================================================ analysis
 def analiza():
     rng = np.random.default_rng(SEED)
-    P('p67 -- CONFIDENCE AND CALIBRATION OF THE DETECTOR AND CLASS STABILITY (MIPRO 2027); plan: claude/p67_mipro_kalibracija_plan.md')
+    P('p67 -- CONFIDENCE AND CALIBRATION OF THE DETECTOR AND CLASS STABILITY (MIPRO 2027)')
     P('detection threshold %.2f; greedy matching by confidence, IoU >= 0.5, class-agnostic; ECE %d bins on [%.2f, 1]; bootstrap over sequences %d x' % (THR, NB, THR, NBOOT))
     SN = {sk: snimke(sk) for sk in SKUPOVI}
     imaju = [(d, sk) for d in DETS for sk in SKUPOVI if SN[sk] and all(json_ok(outp(d, sk, ime)) for ime, _, _ in SN[sk])]
@@ -654,7 +654,7 @@ def fv_pomak():
     for d in DETS:
         for sk in SN:
             if not all(json_ok(outp(d, sk, ime)) for ime, _, _ in SN[sk]): sys.exit('!! no detections %s x %s' % (d, sk))
-    Q('p67b -- FVessel with the same offset for both detectors (plan: claude/p67_mipro_kalibracija_plan.md, section p67b)')
+    Q('p67b -- FVessel with the same offset for both detectors')
     Q('main offset = 0 (nominal, frame = round(s x fps)); sensitivity 12 and 21; P(p>=0.8) only with >= %d detections above 0.8' % N_TAU_MIN)
     Ks, _ = mjeri('ssmot', 'ssmot', SN['ssmot'], s_lancima=False); Hs = hist_snimke(Ks); ims = sorted(Hs)
     f3 = lambda x: '-' if x is None or x != x else '%.3f' % x
@@ -707,7 +707,7 @@ def laece():
     IoU > 0), 0 for the unmatched; distractors left out. Comparison with ECE with a binary hit at IoU 0.5 on the same detections."""
     rng = np.random.default_rng(SEED); out = []
     def Q(x=''): print(x, flush=True); out.append(str(x))
-    Q('p67c -- LaECE0 (target = IoU) versus ECE@0.5 (target = hit); SSMOT and SMD-Plus; plan: claude/p67_mipro_kalibracija_plan.md, section p67c')
+    Q('p67c -- LaECE0 (target = IoU) versus ECE@0.5 (target = hit); SSMOT and SMD-Plus, section p67c')
     fine = np.linspace(THR, 1.0, NB + 1); fine[-1] = 1.0 + 1e-9
     R = {}
     for d in DETS:
@@ -796,14 +796,14 @@ def gmm_prag(w, mu, sd, zmin=None, zmax=None):
 GMM_PREC_MIN = 0.90      # rule p68 (written before the run): precision above the GMM threshold >= 0.90 ...
 GMM_D_ODV = 2.0          # ... and Ashman's D > 2 = cleanly separated components
 def gmm_mod():
-    """p68 (plan written before the run, claude/p67_mipro_kalibracija_plan.md, section p68): fast confirmation threshold from the confidence distribution
+    """p68 (plan written before the run): fast confirmation threshold from the confidence distribution
     WITHOUT labels. Mixture of two Gaussian distributions on the logit of the confidence (all frames, all detections) on the FIRST half of the sequences of the set;
     evaluation with labels on the SECOND half: precision and coverage above the GMM threshold versus the fixed threshold 0.8 and versus an 'oracle'
     (smallest threshold with precision >= 0.95, computed with labels on the same sequences). Offset 0 on all sets."""
     out = []
     def Q(x=''): print(x, flush=True); out.append(str(x))
     f3 = lambda x: '-' if x is None or x != x else '%.3f' % x
-    Q('p68 -- confidence threshold from a mixture of two Gaussian distributions without labels (plan: claude/p67_mipro_kalibracija_plan.md, section p68)')
+    Q('p68 -- confidence threshold from a mixture of two Gaussian distributions without labels')
     Q('fit: logit((p - 0.25) / 0.75), all detections of all frames of the FIRST half of the sequences; evaluation: SECOND half, IoU >= 0.5, offset 0')
     def ocjena(C, Y, tau):
         if tau is None: return dict(n=0, P=float('nan'), cov=float('nan'))

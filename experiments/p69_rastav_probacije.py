@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """p69: DECOMPOSITION OF THE PROBATION -- confidence threshold (tau = 0.8) versus conversion of the durations to seconds. YOLO11m, 16 SSMOT sequences, streammux 1280x720.
 
-Plan written BEFORE the run (project: claude/p69_p70_plan.md). Tracker values frozen; nothing is selected.
+Plan written BEFORE the run. Tracker values frozen; nothing is selected.
 Setup as in p55 (probe_moj_p55.py, config_infer_11m.txt, MYTRACKER_FPS = FPS of the sequence, the class excludes matching as in the baseline).
 New variants of our tracker:
   sec  = minHitsSec 0.6667 and maxAgeSec 3.3333, threshold off        -> /workspace/log_p69_sec_ss_<n>.json
@@ -148,7 +148,7 @@ def runs():
     if miss: sys.exit('!! missing (p55 must be done):\n   ' + '\n   '.join(miss))
     t = open(PM).read()
     if not (re.search(r"""set_property\(\s*['"]width['"]\s*,\s*1280\s*\)""", t) and re.search(r"""set_property\(\s*['"]height['"]\s*,\s*720\s*\)""", t)):
-        sys.exit('!! probe_moj_p55.py does not have streammux 1280x720 -- tell Claude')
+        sys.exit('!! probe_moj_p55.py does not have streammux 1280x720 -- report this')
     orig = open(SRC).read(); bad = check_base(orig)
     if bad: sys.exit('!! track.h is NOT at the baseline configuration -- nothing was run:\n   ' + '\n   '.join(bad))
     todo = {v: [s for s in SS16 if not json_ok(outp(v, s))] for v, _, _ in NEW}
@@ -173,13 +173,13 @@ def runs():
                 if ch:
                     if os.path.exists(out): os.remove(out)
                     open(O + '/greska.txt', 'w').write(err)
-                    sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- send to Claude: tail -40 /workspace/scpilot/p69/greska.txt' % (', '.join(ch), lab, s))
+                    sys.exit('!! %s changed during the run (%s, SSMOT_%d) -- see: tail -40 /workspace/scpilot/p69/greska.txt' % (', '.join(ch), lab, s))
                 if json_ok(out):
                     done[0] += 1; el = time.time() - t0
                     print('  [%3d/%d] %-34s SSMOT %-2d ok   (about %.0f min left)' % (done[0], n_all, lab, s, el / done[0] * (n_all - done[0]) / 60), flush=True); return
                 if os.path.exists(out): os.remove(out)
                 open(O + '/greska.txt', 'w').write('%s SSMOT_%d, return code %s\n' % (lab, s, rc) + err)
-            sys.exit('!! %s, SSMOT %d failed in the second attempt too -- send to Claude: tail -40 /workspace/scpilot/p69/greska.txt' % (lab, s))
+            sys.exit('!! %s, SSMOT %d failed in the second attempt too -- see: tail -40 /workspace/scpilot/p69/greska.txt' % (lab, s))
         def set_variant(cfg, lab):
             txt = orig
             for kk, x in cfg.items(): txt = setv(txt, kk, x)
@@ -192,7 +192,7 @@ def runs():
         a, b = frames(chk_out), frames(OLD['prob'] % CHECK[2])
         if a != b:
             nf = len(set(a) | set(b)); ne = sum(1 for f in set(a) | set(b) if a.get(f) != b.get(f))
-            sys.exit('!! CHECK FAILED: probation only on SSMOT %d differs from p55 in %d of %d frames -- STOP, send this output to Claude.' % (CHECK[2], ne, nf))
+            sys.exit('!! CHECK FAILED: probation only on SSMOT %d differs from p55 in %d of %d frames -- STOP, report this output.' % (CHECK[2], ne, nf))
         print('reproducibility check: probation only on SSMOT %d identical to p55 (%d frames with detections)' % (CHECK[2], len(a)), flush=True)
         # 2. new variants
         for v, cfg, lab in NEW:
@@ -204,14 +204,14 @@ def runs():
         try: build(); okb = True
         except Exception as e: okb = False; print('!! compilation of the baseline track.h failed: %s' % e, flush=True)
         if okb and os.path.exists(BAK) and open(SRC).read() == open(BAK).read(): os.remove(BAK)
-        print('track.h restored to the baseline configuration%s.' % (' and compiled' if okb else ' (COMPILATION FAILED -- tell Claude)'), flush=True)
+        print('track.h restored to the baseline configuration%s.' % (' and compiled' if okb else ' (COMPILATION FAILED -- report this)'), flush=True)
         for p, hs in sh.items():
             b = p + '.p69bak'
             if os.path.exists(p) and sha(p) == hs:
                 if os.path.exists(b): os.remove(b)
             elif os.path.exists(b):
                 if os.path.exists(p): os.replace(p, p + '.p69_nepoznat')
-                os.replace(b, p); print('   !! %s changed -- RESTORED from the backup copy; tell Claude' % os.path.basename(p), flush=True)
+                os.replace(b, p); print('   !! %s changed -- RESTORED from the backup copy; report this' % os.path.basename(p), flush=True)
         print('   engines checked (SHA256).', flush=True)
         pusti_lock()
     print('GPU part done (%.0f min).' % ((time.time() - t0) / 60), flush=True)
@@ -248,7 +248,7 @@ def ocjena():
         return res
     FILES = {'base': {s: OLD['base'] % s for s in SS16}, 'sec': {s: outp('sec', s) for s in SS16}, 'gate': {s: outp('gate', s) for s in SS16},
              'prob': {s: OLD['prob'] % s for s in SS16}, 'final': {s: OLD['final'] % s for s in SS16}}
-    P('=== p69: decomposition of the probation (threshold tau = 0.8 versus durations in seconds), YOLO11m, 16 SSMOT sequences, streammux 1280x720; plan: claude/p69_p70_plan.md')
+    P('=== p69: decomposition of the probation (threshold tau = 0.8 versus durations in seconds), YOLO11m, 16 SSMOT sequences, streammux 1280x720')
     if json_ok(outp('provjera_prob', CHECK[2])):
         same = frames(outp('provjera_prob', CHECK[2])) == frames(OLD['prob'] % CHECK[2])
         P('    reproducibility check (probation only, SSMOT %d, against p55): %s' % (CHECK[2], 'IDENTICAL' if same else 'DIFFERENT -- the results are not comparable'))

@@ -69,7 +69,7 @@ if ver == 'v7.3':
         for k in g:
             o = g[k]; P('  %s%s: %s' % (pref, k, ('group' if not hasattr(o, 'shape') else 'set %s %s' % (o.shape, o.dtype))))
             if not hasattr(o, 'shape'): obidi(o, pref + k + '/')
-    obidi(D); P('!! v7.3 format -- send this output to Claude (reading must be adapted)'); sys.exit(0)
+    obidi(D); P('!! v7.3 format -- report this output (reading must be adapted)'); sys.exit(0)
 GLAVNA = None
 for k, v in D.items():
     P('  variable %s: %s' % (k, type(v).__name__ if not isinstance(v, np.ndarray) else 'ndarray%s %s' % (v.shape, v.dtype)))
@@ -77,7 +77,7 @@ for k, v in D.items():
     if polja(el):
         P('    fields: %s' % polja(el))
         if isinstance(v, np.ndarray) and (GLAVNA is None or v.size > D[GLAVNA].size): GLAVNA = k
-if GLAVNA is None: P('!! no array of per-frame structures found -- send this output to Claude'); sys.exit(0)
+if GLAVNA is None: P('!! no array of per-frame structures found -- report this output'); sys.exit(0)
 S = D[GLAVNA].ravel(); F = polja(S[0])
 P('main variable: %s (%d elements = frames?), fields %s' % (GLAVNA, S.size, F))
 for i in range(min(3, S.size)):
@@ -87,7 +87,7 @@ IDP = [f for f in F if re.search(r'id|track|trag|label_?id', f, re.I)]
 BBP = [f for f in F if re.search(r'^bb$|bbox|box', f, re.I)]
 KLP = [f for f in F if re.search(r'object|class|cls', f, re.I)]
 P('field with ID: %s | boxes: %s | class: %s' % (IDP or 'NONE', BBP or '?', KLP or '?'))
-if not BBP: P('!! field with boxes not recognised -- send this output to Claude'); sys.exit(0)
+if not BBP: P('!! field with boxes not recognised -- report this output'); sys.exit(0)
 
 def okviri(e):
     b = np.asarray(getattr(e, BBP[0]), dtype=float)

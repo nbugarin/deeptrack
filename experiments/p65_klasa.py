@@ -8,7 +8,7 @@ Experiment: the same 4 NVIDIA trackers, the same settings, the ONLY change check
 Our tracker is NOT rerun (its logs from p64_ssmot are used; track.h is not touched, nothing is compiled).
 Copies of the configurations in /workspace/p65_cfg/ (the original yml files are not changed). Logs: /workspace/scpilot/p65_klasa0/.
 
-Set in advance (claude/p63_smd_plan.md):
+Set in advance:
  - main measure: change in HOTA / AssA / IDF1 of each NVIDIA tracker (checkClassMatch 0 minus 1), Wilcoxon, Holm over 4
  - explanation SUPPORTED if for at least 3 of 4 NVIDIA trackers HOTA with checkClassMatch: 0 is significantly higher than with 1
  - additionally: ours minus NVIDIA (checkClassMatch: 0) -- is the class penalty better than ignoring the class completely
@@ -48,7 +48,7 @@ def pripremi_cfg():
     for k, c, lab in NV0:
         t = open(c).read()
         rx = re.compile(r'^(\s*checkClassMatch\s*:\s*)1(\b.*)$', re.M)
-        if len(rx.findall(t)) != 1: sys.exit('!! not exactly one "checkClassMatch: 1" found in %s -- tell Claude' % c)
+        if len(rx.findall(t)) != 1: sys.exit('!! not exactly one "checkClassMatch: 1" found in %s -- report this' % c)
         t2 = rx.sub(lambda m: m.group(1) + '0' + m.group(2), t)
         a, b = t.splitlines(), t2.splitlines(); diff = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
         if len(a) != len(b) or len(diff) != 1: sys.exit('!! copy %s differs in more than 1 line' % c)

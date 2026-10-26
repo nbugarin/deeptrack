@@ -119,9 +119,9 @@ def native_copy(src, dst, w, h):
     t = open(src).read(); t2 = t
     for k, v in (('width', w), ('height', h)):
         t2, n = MUXRX[k].subn(lambda m, v=v: m.group(1) + str(v) + m.group(2), t2)
-        if n != 1: sys.exit('!! in %s, not exactly one streammux setting "%s" was found (found %d) -- tell Claude' % (os.path.basename(src), k, n))
+        if n != 1: sys.exit('!! in %s, not exactly one streammux setting "%s" was found (found %d) -- report this' % (os.path.basename(src), k, n))
     a = t.splitlines(); b = t2.splitlines(); diff = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
-    if len(a) != len(b) or len(diff) > 2: sys.exit('!! copy %s differs in more than 2 lines -- tell Claude' % os.path.basename(src))
+    if len(a) != len(b) or len(diff) > 2: sys.exit('!! copy %s differs in more than 2 lines -- report this' % os.path.basename(src))
     open(dst, 'w').write(t2)
 RX = lambda n: re.compile(r'^(\s*(int|float|double|bool)\s+' + re.escape(n) + r'\s*=\s*)([^;]+)(;)', re.M)
 def getv(txt, n):
@@ -227,10 +227,10 @@ def runs():
                 err = (r.stdout or '')[-2500:] + '\n----\n' + (r.stderr or '')[-3500:]
             except subprocess.TimeoutExpired: err = 'time limit exceeded'
             ch = [os.path.basename(p) for p in PROT if stat(p) != st_[p]]
-            if ch: open(O + '/greska.txt', 'w').write(err); sys.exit('!! %s changed during the run -- tell Claude' % ', '.join(ch))
+            if ch: open(O + '/greska.txt', 'w').write(err); sys.exit('!! %s changed during the run -- report this' % ', '.join(ch))
             if not json_ok(out):
                 open(O + '/greska.txt', 'w').write('%s %s\n' % (lab, ime) + err)
-                sys.exit('!! %s on %s failed -- send to Claude: tail -40 %s/greska.txt' % (lab, ime, O))
+                sys.exit('!! %s on %s failed -- see: tail -40 %s/greska.txt' % (lab, ime, O))
             dt = time.time() - ta; st['vrijeme']['%s|%s' % (k, ime)] = [n, dt]; spremi(st)
             el = time.time() - t0
             print('  [%2d/%d] %-18s %s ok  (%.0f FPS; about %.0f min left)' % (i, len(todo), lab, ime, n / max(dt, 1e-6), el / i * (len(todo) - i) / 60), flush=True)
@@ -241,14 +241,14 @@ def runs():
             try: build()
             except Exception as e: okb = False; print('!! compilation of the baseline track.h failed: %s' % e, flush=True)
         if okb and os.path.exists(BAK) and open(SRC).read() == open(BAK).read(): os.remove(BAK)
-        print('track.h restored to the baseline configuration%s.' % ((' and compiled' if preveden else ' (it was not changed at all)') if okb else ' (COMPILATION FAILED -- tell Claude)'), flush=True)
+        print('track.h restored to the baseline configuration%s.' % ((' and compiled' if preveden else ' (it was not changed at all)') if okb else ' (COMPILATION FAILED -- report this)'), flush=True)
         for p, hs in sh.items():
             b = p + '.p60bak'
             if os.path.exists(p) and sha(p) == hs:
                 if os.path.exists(b): os.remove(b)
             elif os.path.exists(b):
                 if os.path.exists(p): os.replace(p, p + '.p60_nepoznat')
-                os.replace(b, p); print('   !! %s changed -- RESTORED from the backup copy; tell Claude' % os.path.basename(p), flush=True)
+                os.replace(b, p); print('   !! %s changed -- RESTORED from the backup copy; report this' % os.path.basename(p), flush=True)
         pusti_lock()
     print('GPU part done (%.0f min).' % ((time.time() - t0) / 60), flush=True)
 

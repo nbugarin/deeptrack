@@ -10,7 +10,7 @@ engine protection). The ONLY change: copies of the 4 NVIDIA yml files with check
 Our tracker is NOT rerun (the existing log_p55_final_ss_<n>.json are used); at the end p55 recompiles the baseline track.h
 (the same source code -- as after every p55 run). Logs: /workspace/scpilot/p66/log_p66_nv_<k>_ss_<n>.json.
 
-Set in advance (claude/p63_smd_plan.md, section p66):
+Set in advance:
  (A) mechanism on SSMOT: HOTA with checkClassMatch 0 rises significantly (Wilcoxon, Holm over 4) for >= 3 of 4 NVIDIA trackers
  (B) the claim of the IEEE paper STANDS if ours is still significantly better in HOTA than NvDeepSORT and both NvDCF with checkClassMatch 0;
      otherwise the contribution must be reworded (practical recommendation for DeepStream + probation)
@@ -41,7 +41,7 @@ def cfg_kopije():
     os.makedirs(CFGD, exist_ok=True); nov = []
     for k, c, lab in NV0:
         t = open(c).read(); rx = re.compile(r'^(\s*checkClassMatch\s*:\s*)1(\b.*)$', re.M)
-        if len(rx.findall(t)) != 1: sys.exit('!! not exactly one "checkClassMatch: 1" found in %s -- tell Claude' % c)
+        if len(rx.findall(t)) != 1: sys.exit('!! not exactly one "checkClassMatch: 1" found in %s -- report this' % c)
         t2 = rx.sub(lambda m: m.group(1) + '0' + m.group(2), t)
         a, b = t.splitlines(), t2.splitlines()
         if len(a) != len(b) or sum(1 for x, y in zip(a, b) if x != y) != 1: sys.exit('!! copy %s differs in more than 1 line' % c)
@@ -58,7 +58,7 @@ if not AN:
     B.LOCKS = list(B.LOCKS) + [S + '/p55/p55.lock', S + '/p60/p60.lock', S + '/p60_coco/p60.lock', S + '/p64_coco/p60.lock',
                                S + '/p64_ssmot/p60.lock', S + '/p65_klasa0/p60.lock']
     nedostaje = [s for s in SS16 if not B.json_ok(_outp55('final', s))]
-    if nedostaje: sys.exit('!! no log_p55_final_ss_<n>.json for sequences %s -- tell Claude' % nedostaje)
+    if nedostaje: sys.exit('!! no log_p55_final_ss_<n>.json for sequences %s -- report this' % nedostaje)
     print('p66: NVIDIA trackers with checkClassMatch: 0 on 16 SSMOT sequences; configurations in %s; logs in %s' % (CFGD, O), flush=True)
     B.runs()
 

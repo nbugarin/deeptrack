@@ -8,7 +8,7 @@ Tracker values FROZEN; nothing is tuned on SMD. Two detectors (all trackers get 
   ssmot = YOLO11m trained on SSMOT, input 640                                                    -- additional
 (p63: recall on SMD COCO 640 64.5 % / precision 87.9 %; SSMOT 640 32.2 % / 77.2 %)
 
-Evaluation (set in advance, claude/p63_smd_plan.md):
+Evaluation (set in advance):
  - TrackEval on EVERY frame: HOTA, DetA, AssA, IDF1, MOTA, IDSW, Frag, FP, FN; mean per sequence (n = 40)
  - distractors (Buoy, Other): a tracker box that Hungarian matching with the whole GT (IoU >= 0.5) matches to a distractor is
    removed (as in MOT17); distractor GT is not counted

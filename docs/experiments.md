@@ -19,5 +19,7 @@ Section and table numbers refer to the version submitted to IEEE Access.
 | `p65_klasa.py` | NVIDIA trackers with class-agnostic matching (`checkClassMatch: 0`) on SMD-Plus | Table XIV |
 | `p66_klasa_ssmot.py` | The same on the 16 SSMOT sequences | Table XIV |
 | `p67_kalibracija.py` | Detections of both detectors in the DeepStream pipeline without a tracker on SSMOT, SMD-Plus and FVessel; recall and precision on SMD-Plus. The script also contains the confidence-calibration analysis of a companion study | Detector recall and precision in Section V-H |
+| `p69_rastav_probacije.py` | Separates the two parts of the probation: the confidence gate with durations in frames, and the durations in seconds without the gate | Section V-C (decomposition of the probation) |
+| `p70_rukovatelj.py` | Reruns OC-SORT, Deep OC-SORT and Hybrid-SORT as in `p56` and counts how often the exception handler in the shared Kalman filter is invoked; checks that the outputs equal those of `p56` | Sections IV-D and VII |
 
-For the experiments that test a hypothesis (`p52`–`p56`, `p60_fvessel`, `p64`–`p67`), the comparisons, metrics, tests and decision rules were written down before the run and are quoted at the top of the script. The other scripts prepare data or detectors.
+For the experiments that test a hypothesis (`p52`–`p56`, `p60_fvessel`, `p64`–`p67`, `p69`, `p70`), the comparisons, metrics, tests and decision rules were written down before the run and are quoted at the top of the script. The other scripts prepare data or detectors.

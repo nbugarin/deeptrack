@@ -91,9 +91,6 @@ Comments, descriptions and printed output are in English. File names, command-li
 
 No data and no model weights are included. See [data/README.md](data/README.md) for how to obtain SSMOT, SMD-Plus and FVessel. The YOLO11m and OSNet weights were trained on the SSMOT detection and Re-ID subsets; they are available from the authors upon reasonable request, with the agreement of the author of SSMOT.
 
-## Use of generative AI
-
-Parts of the experiment and evaluation scripts and of this documentation were written with the assistance of a generative AI system (Claude, Anthropic). The English translation of the comments and messages in all files, including the C++ library, was also made with its assistance; the translation changed only comments and text, not code. The authors reviewed them and are responsible for them.
 
 ## License
 

@@ -78,19 +78,18 @@ Comments, descriptions and printed output are in English. File names, command-li
 
 | Option | Meaning | Scripts |
 |---|---|---|
-| `--eval`, `--analiza` | evaluation only, from existing logs (no GPU) | `p44`, `p52`–`p56`, `p69`, `p70`; `p60_fvessel`, `p64`–`p67`, `p73` |
-| `--vrati` | restore `track.h` and the engines after an interrupted run | `p44`, `p52`–`p55`, `p60_fvessel`, `p67`, `p69`; for `p64`–`p66` and `p73` run `p60_fvessel.py --vrati` |
+| `--eval`, `--analiza` | evaluation only, from existing logs (no GPU) | `p44`, `p52`–`p56`, `p69`, `p70`; `p60_fvessel`, `p64`–`p67` |
+| `--vrati` | restore `track.h` and the engines after an interrupted run | `p44`, `p52`–`p55`, `p60_fvessel`, `p67`, `p69` |
 | `--popravi` | repair after two simultaneous runs | `p55` |
 | `--provjera`, `--dijagnoza` | quick check of the BoxMOT trackers; full traceback of the first error | `p56` |
-| `--det=coco`, `--det=ssmot` | choice of detector | `p60_fvessel`, `p64`, `p73` |
-| `--pomak=K` | fixed frame offset K (sensitivity) | `p60_fvessel`, `p64`, `p73` |
-| `--samo-fiksne` | run only the 14 fixed-camera ShipsMOT sequences | `p73` |
+| `--det=coco`, `--det=ssmot` | choice of detector | `p60_fvessel`, `p64` |
+| `--pomak=K` | fixed frame offset K (sensitivity) | `p60_fvessel`, `p64` |
 | `--samo-detektor` | detector check only | `p63` |
 | `--fvessel-pomaci`, `--laece`, `--gmm` | additional analyses of the companion calibration study | `p67` |
 
 ## Data and models
 
-No data and no model weights are included. See [data/README.md](data/README.md) for how to obtain SSMOT, SMD-Plus, FVessel and ShipsMOT. The YOLO11m and OSNet weights were trained on the SSMOT detection and Re-ID subsets; they are available from the authors upon reasonable request, with the agreement of the author of SSMOT.
+No data and no model weights are included. See [data/README.md](data/README.md) for how to obtain SSMOT, SMD-Plus and FVessel. The YOLO11m and OSNet weights were trained on the SSMOT detection and Re-ID subsets; they are available from the authors upon reasonable request, with the agreement of the author of SSMOT.
 
 
 ## License

@@ -21,9 +21,5 @@ Section and table numbers refer to the version submitted to IEEE Access.
 | `p67_kalibracija.py` | Detections of both detectors in the DeepStream pipeline without a tracker on SSMOT, SMD-Plus and FVessel; recall and precision on SMD-Plus. The script also contains the confidence-calibration analysis of a companion study | Detector recall and precision in Section V-H |
 | `p69_rastav_probacije.py` | Separates the two parts of the probation: the confidence gate with durations in frames, and the durations in seconds without the gate | Section V-C (decomposition of the probation) |
 | `p70_rukovatelj.py` | Reruns OC-SORT, Deep OC-SORT and Hybrid-SORT as in `p56` and counts how often the exception handler in the shared Kalman filter is invoked; checks that the outputs equal those of `p56` | Sections IV-D and VII |
-| `p71_shipsmot_provjera.py` | Checks the ShipsMOT test split: frame rates, resolutions, annotated frames, identities, gaps, boxes beyond the image | Section V-H |
-| `p71b_shipsmot_kamera.py` | Classifies each ShipsMOT test sequence as fixed or moving camera by phase correlation of the masked background (rule set before the measurement); checks video length against the annotation | Section V-H (14 fixed-camera sequences) |
-| `p71c_shipsmot_klase.py` | Maps the class numbers of the ShipsMOT ground truth to class names | Section V-H |
-| `p73_shipsmot.py` | Trackers on ShipsMOT with both detectors: main analysis on the 14 fixed-camera sequences, descriptive analysis on all 38 sequences at 1920×1080; `--pomak=K` repeats the evaluation with a fixed frame offset | Table XII (ShipsMOT); Section V-H |
 
-For the experiments that test a hypothesis (`p52`–`p56`, `p60_fvessel`, `p64`–`p67`, `p69`, `p70`, `p73`), the comparisons, metrics, tests and decision rules were written down before the run and are quoted at the top of the script. The other scripts prepare data or detectors.
+For the experiments that test a hypothesis (`p52`–`p56`, `p60_fvessel`, `p64`–`p67`, `p69`, `p70`), the comparisons, metrics, tests and decision rules were written down before the run and are quoted at the top of the script. The other scripts prepare data or detectors.

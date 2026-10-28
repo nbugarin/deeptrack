@@ -78,8 +78,8 @@ Comments, descriptions and printed output are in English. File names, command-li
 
 | Option | Meaning | Scripts |
 |---|---|---|
-| `--eval`, `--analiza` | evaluation only, from existing logs (no GPU) | `p44`, `p52`–`p56`, `p69`, `p70`, `p75`; `p60_fvessel`, `p64`–`p67`, `p73` |
-| `--vrati` | restore `track.h` and the engines after an interrupted run | `p44`, `p52`–`p55`, `p60_fvessel`, `p67`, `p69`; for `p64`–`p66` and `p73` run `p60_fvessel.py --vrati` |
+| `--eval`, `--analiza` | evaluation only, from existing logs (no GPU) | `p44`, `p52`–`p56`, `p69`, `p70`, `p75`, `p78`; `p60_fvessel`, `p64`–`p67`, `p73`, `p81` |
+| `--vrati` | restore `track.h` and the engines after an interrupted run | `p44`, `p52`–`p55`, `p60_fvessel`, `p67`, `p69`, `p78`; for `p64`–`p66`, `p73` and `p81` run `p60_fvessel.py --vrati` |
 | `--popravi` | repair after two simultaneous runs | `p55` |
 | `--provjera`, `--dijagnoza` | quick check of the BoxMOT trackers; full traceback of the first error | `p56` |
 | `--det=coco`, `--det=ssmot` | choice of detector | `p60_fvessel`, `p64`, `p73` |

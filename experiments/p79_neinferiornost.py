@@ -20,7 +20,7 @@ import numpy as np
 W = os.environ.get('P79_W', '/workspace'); S = W + '/scpilot'
 DELTA = 0.005
 P56 = S + '/p56/p56_sve.json'
-ME = 'ours, final'
+ME_KEYS = ('ours, final', 'vlastiti, konacna', 'vlastiti, konačna')   # English and original Croatian key of our final variant in p56_sve.json
 RESEARCH = ['ByteTrack', 'BoT-SORT', 'OC-SORT', 'Deep OC-SORT', 'StrongSORT', 'Hybrid-SORT', 'BoostTrack', 'ImprAssoc']
 SPEED = [('SMD-Plus, SSMOT detector', S + '/p64_ssmot/stanje.json', 30.0), ('SMD-Plus, COCO detector', S + '/p64_coco/stanje.json', 30.0),
          ('ShipsMOT, SSMOT detector', S + '/p73_ssmot/stanje.json', 30.0), ('ShipsMOT, COCO detector', S + '/p73_coco/stanje.json', 30.0),
@@ -46,7 +46,9 @@ def ci90(d, seed=0, nb=10000):
 def part_a(OUT):
     if not os.path.exists(P56): P('(a) !! missing %s -- p56 evaluation first' % P56); return
     D = json.load(open(P56)); PS = D.get('po_snimkama', {})
-    if ME not in PS: P('(a) !! "%s" not in p56_sve.json (keys: %s)' % (ME, ', '.join(PS))); return
+    ME = next((k for k in ME_KEYS if k in PS), None)
+    if ME is None: P('(a) !! none of %s in p56_sve.json (keys: %s)' % (' / '.join(ME_KEYS), ' | '.join(PS))); return
+    P('    our final variant: key "%s"' % ME)
     seqs = sorted(PS[ME], key=int)
     refs = [k for k in RESEARCH if k in PS and sorted(PS[k], key=int) == seqs]
     P('=== (a) NON-INFERIORITY on the same detections (p56), %d SSMOT sequences, delta = %.3f HOTA' % (len(seqs), DELTA))
